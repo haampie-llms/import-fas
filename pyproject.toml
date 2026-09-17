@@ -1,0 +1,38 @@
+[project]
+name = "import-fas"
+description = "Find the import statements that make a Python package's import graph cyclic"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Harmen Stoppels", email = "me@harmenstoppels.nl" }]
+keywords = ["imports", "circular imports", "feedback arc set", "static analysis"]
+classifiers = [
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dynamic = ["version"]
+
+[project.urls]
+Home = "https://github.com/haampie-llms/import-fas"
+
+[project.optional-dependencies]
+clingo = ["clingo"]
+dev = ["clingo", "pytest", "ruff", "mypy"]
+
+[project.scripts]
+import-fas = "import_fas.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "import_fas/__init__.py"
+
+[tool.mypy]
+files = ["import_fas"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
