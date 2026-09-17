@@ -12,14 +12,14 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Topic :: Software Development :: Quality Assurance",
 ]
+dependencies = ["clingo"]
 dynamic = ["version"]
 
 [project.urls]
 Home = "https://github.com/haampie-llms/import-fas"
 
 [project.optional-dependencies]
-clingo = ["clingo"]
-dev = ["clingo", "pytest", "ruff", "mypy"]
+dev = ["pytest", "ruff", "mypy"]
 
 [project.scripts]
 import-fas = "import_fas.cli:main"

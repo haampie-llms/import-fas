@@ -5,8 +5,7 @@ Find the import statements that make a Python package's import graph cyclic.
 Circular imports are hard to get rid of one at a time, because it is rarely obvious *which*
 import to delete. `import-fas` builds the module import graph of a package and computes a
 **minimum feedback arc set**: the smallest set of imports whose removal makes the graph
-acyclic. The size of that set is a single number you can keep from growing in CI, and the set
-itself tells you where to start.
+acyclic.
 
 It is two independent halves, and you can use either on its own:
 
@@ -19,8 +18,7 @@ bring your own solver.
 ## Install
 
 ```console
-$ pip install import-fas            # dumping graphs, no dependencies
-$ pip install 'import-fas[clingo]'  # and solving them
+$ pip install import-fas
 ```
 
 ## Use
@@ -60,7 +58,7 @@ want in CI:
   with: { ref: "${{ github.event.pull_request.base.sha }}", path: old }
 - uses: actions/checkout@v5
   with: { path: new }
-- run: pip install 'import-fas[clingo]'
+- run: pip install import-fas
 - run: import-fas compare old/src/mypkg new/src/mypkg
 ```
 
@@ -103,8 +101,7 @@ pkg.b
 
 Both list nodes sorted by name and edges sorted by index, so a dump is reproducible. An edge
 `i j` means node `i` imports node `j`. Nodes that neither import nor are imported are still
-listed. `import-fas graph` needs no dependencies, and `import-fas solve` reads either format
-back.
+listed, and `import-fas solve` reads either format back.
 
 ### The solution file
 

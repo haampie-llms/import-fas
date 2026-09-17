@@ -7,6 +7,7 @@ import os
 import sys
 from collections.abc import Iterable, Sequence
 
+from .fas import minimum_feedback_arc_set
 from .graph import Edge, Graph, Solver, build_graph, is_acyclic
 from .io import FORMATS, read_fas, read_graph, write_graph
 
@@ -44,28 +45,10 @@ def print_solution(graph: Graph, fas: Sequence[Edge]) -> None:
     print("---")
 
 
-def lazy_solver() -> Solver:
-    """The clingo solver, imported on first use so dumping a graph needs no dependencies."""
-
-    def solve(graph: Graph) -> list[Edge]:
-        try:
-            from .fas import minimum_feedback_arc_set
-        except ImportError:
-            print(
-                "import-fas: clingo is not installed: pip install 'import-fas[clingo]', or "
-                "pass a solution computed elsewhere with --fas",
-                file=sys.stderr,
-            )
-            raise SystemExit(2) from None
-        return minimum_feedback_arc_set(graph)
-
-    return solve
-
-
 def compare(
     old: Graph,
     new: Graph,
-    solve: Solver,
+    solve: Solver = minimum_feedback_arc_set,
     old_fas: Sequence[Edge] | None = None,
     new_fas: Sequence[Edge] | None = None,
 ) -> int:
@@ -184,7 +167,6 @@ def main() -> int:
     cmp_parser.add_argument("--fas-new", metavar="FILE")
 
     args = parser.parse_args()
-    solve = lazy_solver()
 
     try:
         if args.command == "graph":
@@ -201,7 +183,7 @@ def main() -> int:
             graph = load(args.package, args.exclude, args.inline, parser)
             fas = load_fas(args.fas, graph)
             if fas is None:
-                fas = solve(graph)
+                fas = minimum_feedback_arc_set(graph)
             elif not is_acyclic(graph, fas):
                 print(
                     f"{args.fas}: not a feedback arc set, the graph still has cycles",
@@ -215,9 +197,9 @@ def main() -> int:
 
         old = load(args.old, args.exclude, args.inline, parser)
         new = load(args.new, args.exclude, args.inline, parser)
-        return compare(
-            old, new, solve, load_fas(args.fas_old, old), load_fas(args.fas_new, new)
-        )
+        old_fas = load_fas(args.fas_old, old)
+        new_fas = load_fas(args.fas_new, new)
+        return compare(old, new, old_fas=old_fas, new_fas=new_fas)
     except (OSError, SyntaxError, ValueError) as e:
         print(f"import-fas: {e}", file=sys.stderr)
         return 2

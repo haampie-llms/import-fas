@@ -1,11 +1,6 @@
 import random
 
-import pytest
-
-pytest.importorskip("clingo")
-
-from import_fas import Graph, is_acyclic
-from import_fas.fas import minimum_feedback_arc_set
+from import_fas import Graph, is_acyclic, minimum_feedback_arc_set
 
 
 def test_an_empty_graph():
