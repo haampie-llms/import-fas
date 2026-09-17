@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import subprocess
 import sys
@@ -5,6 +6,10 @@ import sys
 import pytest
 
 from import_fas import cli
+
+needs_clingo = pytest.mark.skipif(
+    importlib.util.find_spec("clingo") is None, reason="needs clingo"
+)
 
 CYCLE = {
     "pkg/__init__.py": "",
@@ -48,6 +53,7 @@ def test_the_format_follows_the_output_name(tree, run, tmp_path, name, first):
     assert out.read_text().startswith(first)
 
 
+@needs_clingo
 def test_a_dumped_graph_can_be_read_back(tree, run, tmp_path, capsys):
     out = tmp_path / "g.txt"
     assert run("graph", tree(CYCLE), "-o", str(out)) == 0
@@ -64,6 +70,7 @@ def test_extraction_flags_do_not_apply_to_a_graph_file(tree, run, tmp_path):
     assert excinfo.value.code == 2
 
 
+@needs_clingo
 def test_solve(tree, run, capsys):
     assert run("solve", tree(CYCLE)) == 0
     out = capsys.readouterr().out
@@ -116,12 +123,14 @@ def test_a_syntax_error_in_the_package(tree, run, capsys):
     assert "bad.py" in capsys.readouterr().err
 
 
+@needs_clingo
 def test_compare_unchanged(tree, run, capsys):
     d = tree(CYCLE)
     assert run("compare", d, d) == 0
     assert "stayed the same: 1" in capsys.readouterr().out
 
 
+@needs_clingo
 def test_compare_improved(tmp_path, run, capsys):
     for name, source in {
         "old/pkg/__init__.py": "",
@@ -141,6 +150,7 @@ def test_compare_improved(tmp_path, run, capsys):
     assert "decreased by 1 from 1 to 0" in capsys.readouterr().out
 
 
+@needs_clingo
 def test_compare_worse(tmp_path, run, capsys):
     for name, source in {
         "old/pkg/__init__.py": "",
@@ -162,6 +172,7 @@ def test_compare_worse(tmp_path, run, capsys):
     assert "This is likely a direct consequence" in out
 
 
+@needs_clingo
 def test_compare_when_a_blamed_edge_is_gone(tmp_path, run, capsys):
     """The old solution names pkg.a -> pkg.b, which the new tree does not have at all."""
     for name, source in {
