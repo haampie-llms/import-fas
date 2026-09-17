@@ -8,8 +8,8 @@ import sys
 from collections.abc import Iterable, Sequence
 
 from .fas import minimum_feedback_arc_set
-from .graph import Edge, Graph, Solver, build_graph, is_acyclic
-from .io import FORMATS, read_fas, read_graph, write_graph
+from .graph import Edge, Graph, build_graph
+from .io import FORMATS, read_graph, write_graph
 
 BOLD, RED, GREEN, GREY = "1", "31", "32", "90"
 
@@ -45,16 +45,10 @@ def print_solution(graph: Graph, fas: Sequence[Edge]) -> None:
     print("---")
 
 
-def compare(
-    old: Graph,
-    new: Graph,
-    solve: Solver = minimum_feedback_arc_set,
-    old_fas: Sequence[Edge] | None = None,
-    new_fas: Sequence[Edge] | None = None,
-) -> int:
+def compare(old: Graph, new: Graph) -> int:
     """Print how the number of problematic imports changed, and blame the new ones."""
-    old_fas = solve(old) if old_fas is None else old_fas
-    new_fas = solve(new) if new_fas is None else new_fas
+    old_fas = minimum_feedback_arc_set(old)
+    new_fas = minimum_feedback_arc_set(new)
     before, after = len(old_fas), len(new_fas)
     difference = after - before
 
@@ -77,7 +71,9 @@ def compare(
     # left to blame is what this change introduced. A heuristic: the old solution is not
     # necessarily a subset of the new graph's edges.
     excluded = set(new.indices(old.names(old_fas)))
-    blamed = solve(Graph(new.nodes, [e for e in new.edges if e not in excluded]))
+    blamed = minimum_feedback_arc_set(
+        Graph(new.nodes, [e for e in new.edges if e not in excluded])
+    )
     statements = plural(len(blamed), "statement")
     print(
         f" This is likely a direct consequence of the following import {statements}:\n"
@@ -111,13 +107,6 @@ def load(
         return read_graph(f)
 
 
-def load_fas(path: str | None, graph: Graph) -> list[Edge] | None:
-    if path is None:
-        return None
-    with open(path, encoding="utf-8") as f:
-        return read_fas(f, graph)
-
-
 def add_source(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("package", metavar="PACKAGE_DIR_OR_GRAPH")
     parser.add_argument(
@@ -137,7 +126,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="import-fas", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    dump = sub.add_parser("graph", help="dump the import graph; needs no solver")
+    dump = sub.add_parser("graph", help="dump the import graph the solver sees")
     add_source(dump)
     dump.add_argument(
         "-o", "--output", default="-", help="output file, - for stdout (default)"
@@ -146,15 +135,7 @@ def main() -> int:
         "-f", "--format", choices=FORMATS, help="default: from -o, else json"
     )
 
-    solve_parser = sub.add_parser(
-        "solve", help="report the imports that break all cycles"
-    )
-    add_source(solve_parser)
-    solve_parser.add_argument(
-        "--fas",
-        metavar="FILE",
-        help="check and report this solution instead of solving",
-    )
+    add_source(sub.add_parser("solve", help="report the imports that break all cycles"))
 
     cmp_parser = sub.add_parser(
         "compare", help="fail if the new tree needs more removals"
@@ -163,8 +144,6 @@ def main() -> int:
     cmp_parser.add_argument("new", metavar="NEW")
     cmp_parser.add_argument("--exclude", metavar="REGEX")
     cmp_parser.add_argument("--inline", action="store_true")
-    cmp_parser.add_argument("--fas-old", metavar="FILE")
-    cmp_parser.add_argument("--fas-new", metavar="FILE")
 
     args = parser.parse_args()
 
@@ -181,15 +160,7 @@ def main() -> int:
 
         if args.command == "solve":
             graph = load(args.package, args.exclude, args.inline, parser)
-            fas = load_fas(args.fas, graph)
-            if fas is None:
-                fas = minimum_feedback_arc_set(graph)
-            elif not is_acyclic(graph, fas):
-                print(
-                    f"{args.fas}: not a feedback arc set, the graph still has cycles",
-                    file=sys.stderr,
-                )
-                return 1
+            fas = minimum_feedback_arc_set(graph)
             print(f"{len(fas)} problematic import {plural(len(fas), 'statement')}")
             if fas:
                 print_solution(graph, fas)
@@ -197,9 +168,7 @@ def main() -> int:
 
         old = load(args.old, args.exclude, args.inline, parser)
         new = load(args.new, args.exclude, args.inline, parser)
-        old_fas = load_fas(args.fas_old, old)
-        new_fas = load_fas(args.fas_new, new)
-        return compare(old, new, old_fas=old_fas, new_fas=new_fas)
+        return compare(old, new)
     except (OSError, SyntaxError, ValueError) as e:
         print(f"import-fas: {e}", file=sys.stderr)
         return 2

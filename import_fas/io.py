@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
 from typing import TextIO
 
-from .graph import Edge, Graph
+from .graph import Graph
 
 #: the graph file formats, see the README
 FORMATS = ("json", "text")
@@ -54,28 +53,3 @@ def read_graph(f: TextIO) -> Graph:
     if len(numbers) != 2 * edge_count:
         raise ValueError(f"truncated graph file: it declares {edge_count} edges")
     return Graph(nodes, list(zip(numbers[::2], numbers[1::2])))
-
-
-def write_fas(fas: Sequence[Edge], f: TextIO) -> None:
-    for src, dst in fas:
-        print(src, dst, file=f)
-
-
-def read_fas(f: TextIO, graph: Graph) -> list[Edge]:
-    """One ``src dst`` pair of node indices per line; # starts a comment."""
-    edges = set(graph.edges)
-    fas = []
-    for number, line in enumerate(f, 1):
-        line = line.split("#", 1)[0].strip()
-        if not line:
-            continue
-        try:
-            src, dst = (int(x) for x in line.split())
-        except ValueError:
-            raise ValueError(
-                f"line {number}: expected two node indices, got {line!r}"
-            ) from None
-        if (src, dst) not in edges:
-            raise ValueError(f"line {number}: {src} {dst} is not an edge of this graph")
-        fas.append((src, dst))
-    return sorted(fas)

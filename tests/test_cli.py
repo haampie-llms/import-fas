@@ -59,39 +59,6 @@ def test_solve(tree, run, capsys):
     assert "imports: pkg." in out
 
 
-def test_solve_with_a_solution_from_elsewhere(tree, run, tmp_path, capsys):
-    d = tree(CYCLE)
-    graph = tmp_path / "g.json"
-    run("graph", d, "-o", str(graph))
-    solution = tmp_path / "fas.txt"
-    solution.write_text("# found by hand\n1 2\n")
-    capsys.readouterr()
-    assert run("solve", str(graph), "--fas", str(solution)) == 0
-    assert capsys.readouterr().out.startswith("1 problematic import statement\n")
-
-
-def test_a_solution_that_does_not_break_every_cycle(tree, run, tmp_path, capsys):
-    d = tree(CYCLE)
-    graph = tmp_path / "g.json"
-    run("graph", d, "-o", str(graph))
-    solution = tmp_path / "fas.txt"
-    solution.write_text("")
-    capsys.readouterr()
-    assert run("solve", str(graph), "--fas", str(solution)) == 1
-    assert "not a feedback arc set" in capsys.readouterr().err
-
-
-def test_a_malformed_solution(tree, run, tmp_path, capsys):
-    d = tree(CYCLE)
-    graph = tmp_path / "g.json"
-    run("graph", d, "-o", str(graph))
-    solution = tmp_path / "fas.txt"
-    solution.write_text("nonsense\n")
-    capsys.readouterr()
-    assert run("solve", str(graph), "--fas", str(solution)) == 2
-    assert "expected two node indices" in capsys.readouterr().err
-
-
 def test_a_syntax_error_in_the_package(tree, run, capsys):
     assert run("solve", tree({"pkg/__init__.py": "", "pkg/bad.py": "def (\n"})) == 2
     assert "bad.py" in capsys.readouterr().err

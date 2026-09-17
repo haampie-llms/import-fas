@@ -2,7 +2,7 @@ import pathlib
 
 import pytest
 
-from import_fas import Graph, build_graph, is_acyclic
+from import_fas import build_graph
 
 
 def edges(graph):
@@ -236,11 +236,3 @@ def test_a_directory_whose_name_is_not_an_identifier(tmp_path):
 def test_a_missing_directory(tmp_path):
     with pytest.raises(ValueError, match="not a package"):
         build_graph(str(tmp_path / "nope"))
-
-
-def test_is_acyclic():
-    cycle = Graph(["a", "b"], [(0, 1), (1, 0)])
-    assert not is_acyclic(cycle)
-    assert is_acyclic(cycle, removed=[(1, 0)])
-    assert is_acyclic(Graph(["a", "b"], [(0, 1)]))
-    assert is_acyclic(Graph(["a"], []))

@@ -2,7 +2,7 @@ import io
 
 import pytest
 
-from import_fas import Graph, read_fas, read_graph, write_fas, write_graph
+from import_fas import Graph, read_graph, write_graph
 
 GRAPH = Graph(["pkg", "pkg.a", "pkg.b", "pkg.lonely"], [(0, 1), (1, 2), (2, 1)])
 
@@ -48,24 +48,3 @@ def test_a_truncated_text_graph():
 def test_a_file_that_is_not_a_graph():
     with pytest.raises(ValueError, match="not a graph file"):
         read_graph(io.StringIO("hello there\n"))
-
-
-def test_a_solution_survives_a_round_trip():
-    f = io.StringIO()
-    write_fas([(1, 2), (2, 1)], f)
-    assert read_fas(io.StringIO(f.getvalue()), GRAPH) == [(1, 2), (2, 1)]
-
-
-def test_comments_and_blank_lines_are_skipped():
-    text = "# my-solver, objective 1\n\n2 1  # the cheapest one\n"
-    assert read_fas(io.StringIO(text), GRAPH) == [(2, 1)]
-
-
-def test_a_solution_line_that_is_not_a_pair_of_indices():
-    with pytest.raises(ValueError, match="line 2: expected two node indices"):
-        read_fas(io.StringIO("0 1\npkg.a pkg.b\n"), GRAPH)
-
-
-def test_a_solution_that_names_an_edge_the_graph_does_not_have():
-    with pytest.raises(ValueError, match="line 1: 0 3 is not an edge"):
-        read_fas(io.StringIO("0 3\n"), GRAPH)

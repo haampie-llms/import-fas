@@ -7,18 +7,16 @@ import to delete. `import-fas` builds the module import graph of a package and c
 **minimum feedback arc set**: the smallest set of imports whose removal makes the graph
 acyclic.
 
-It is two independent halves, and you can use either on its own:
-
-1. **extract** a graph from a Python project — a pure standard-library AST walk;
-2. **solve** the feedback arc set — exactly, with [clingo](https://potassco.org/clingo/).
-
-The graph in between is a plain file of nodes and edges, so you can stop after step 1 and
-bring your own solver.
+It is two independent halves — extracting the graph from a Python project with an AST walk,
+and solving the feedback arc set exactly with [clingo](https://potassco.org/clingo/) — and
+the graph in between is a plain file you can dump and read.
 
 ## Install
 
+Not on PyPI yet:
+
 ```console
-$ pip install import-fas
+$ pip install git+https://github.com/haampie-llms/import-fas
 ```
 
 ## Use
@@ -58,24 +56,25 @@ want in CI:
   with: { ref: "${{ github.event.pull_request.base.sha }}", path: old }
 - uses: actions/checkout@v5
   with: { path: new }
-- run: pip install import-fas
+- run: pip install git+https://github.com/haampie-llms/import-fas
 - run: import-fas compare old/src/mypkg new/src/mypkg
 ```
 
-## Use your own solver
+## Dumping the graph
 
-Every positional argument is either a package directory or a graph file, so the two halves
-split at any point:
+When the answer surprises you, the question is almost always about the graph rather than the
+solver: an edge you did not expect, a module that is not there, an `--exclude` that matched
+more than you meant. `import-fas graph` writes out exactly what the solver was given.
 
 ```console
 $ import-fas graph ~/spack/lib/spack/spack --exclude '^spack\.(vendor|test)\b' -o graph.json
-$ my-solver graph.json > fas.txt     # Julia, networkx, an ILP, a heuristic, anything
-$ import-fas solve graph.json --fas fas.txt
+$ import-fas solve graph.json
+14 problematic import statements
 ```
 
-`solve --fas` never solves anything. It checks that removing those edges really does break
-every cycle — a wrong or stale solution is an error, not a silent pass — and then prints the
-usual report. `compare` takes `--fas-old` and `--fas-new` the same way.
+`solve` and `compare` take a dumped graph anywhere they take a package directory, so you can
+look at the file, edit it, and re-solve without parsing the tree again — or hand it to a
+different feedback-arc-set solver.
 
 ### The graph file
 
@@ -99,31 +98,17 @@ pkg.b
 2 1
 ```
 
-Both list nodes sorted by name and edges sorted by index, so a dump is reproducible. An edge
-`i j` means node `i` imports node `j`. Nodes that neither import nor are imported are still
-listed, and `import-fas solve` reads either format back.
+An edge `i j` means node `i` imports node `j`. Both formats list nodes sorted by name and
+edges sorted by index, so a dump is reproducible, and nodes that neither import nor are
+imported are still listed.
 
-### The solution file
-
-One edge per line as two node indices into the graph file it was computed from; `#` starts a
-comment, blank lines are ignored.
-
-```
-# my-solver v1.2, objective 14
-2 1
-5 3
-```
-
-### In process
-
-The solver protocol is `Callable[[Graph], list[Edge]]` — there is nothing to register.
+### In Python
 
 ```python
 import import_fas
 
 graph = import_fas.build_graph("lib/spack/spack", exclude=r"^spack\.(vendor|test)\b")
-fas = my_heuristic(graph)  # list[tuple[int, int]]
-assert import_fas.is_acyclic(graph, fas)
+fas = import_fas.minimum_feedback_arc_set(graph)
 print(graph.names(fas))  # [('spack.concretize', 'spack.solver.asp'), ...]
 ```
 

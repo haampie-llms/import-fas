@@ -4,17 +4,13 @@ from __future__ import annotations
 
 import ast
 import dataclasses
-import graphlib
 import os
 import re
-from collections.abc import Callable, Collection, Iterable
+from collections.abc import Callable, Iterable
 from importlib.util import resolve_name
 
 #: an edge as a pair of indices into :attr:`Graph.nodes`
 Edge = tuple[int, int]
-
-#: anything that turns a graph into a set of edges to remove
-Solver = Callable[["Graph"], list[Edge]]
 
 
 @dataclasses.dataclass
@@ -34,20 +30,6 @@ class Graph:
         edges = set(self.edges)
         pairs = ((index[a], index[b]) for a, b in named if a in index and b in index)
         return sorted(edge for edge in pairs if edge in edges)
-
-
-def is_acyclic(graph: Graph, removed: Collection[Edge] = ()) -> bool:
-    """Whether the graph is acyclic once ``removed`` is taken out of it."""
-    skip = set(removed)
-    predecessors: dict[int, list[int]] = {i: [] for i in range(len(graph.nodes))}
-    for edge in graph.edges:
-        if edge not in skip:
-            predecessors[edge[1]].append(edge[0])
-    try:
-        graphlib.TopologicalSorter(predecessors).prepare()
-    except graphlib.CycleError:
-        return False
-    return True
 
 
 def _is_type_checking(test: ast.expr) -> bool:

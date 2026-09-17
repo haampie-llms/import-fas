@@ -1,6 +1,20 @@
+import graphlib
 import random
 
-from import_fas import Graph, is_acyclic, minimum_feedback_arc_set
+from import_fas import Graph, minimum_feedback_arc_set
+
+
+def is_acyclic(graph, removed=()):
+    skip = set(removed)
+    predecessors = {i: [] for i in range(len(graph.nodes))}
+    for src, dst in graph.edges:
+        if (src, dst) not in skip:
+            predecessors[dst].append(src)
+    try:
+        graphlib.TopologicalSorter(predecessors).prepare()
+    except graphlib.CycleError:
+        return False
+    return True
 
 
 def test_an_empty_graph():
