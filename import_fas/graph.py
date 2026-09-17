@@ -38,6 +38,23 @@ def _is_type_checking(test: ast.expr) -> bool:
     return isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
 
 
+def _is_main(test: ast.expr) -> bool:
+    """``__name__ == "__main__"``, in either order."""
+    if not isinstance(test, ast.Compare) or len(test.ops) != 1:
+        return False
+    if not isinstance(test.ops[0], ast.Eq):
+        return False
+    sides = (test.left, test.comparators[0])
+    name = any(isinstance(s, ast.Name) and s.id == "__name__" for s in sides)
+    main = any(isinstance(s, ast.Constant) and s.value == "__main__" for s in sides)
+    return name and main
+
+
+def _runs_on_import(test: ast.expr) -> bool:
+    """Whether the body of ``if test:`` can run while the module is being imported."""
+    return not _is_type_checking(test) and not _is_main(test)
+
+
 class ImportVisitor(ast.NodeVisitor):
     def __init__(
         self, resolve: Callable[[str, str], str], current_pkg: str, inline: bool
@@ -58,8 +75,9 @@ class ImportVisitor(ast.NodeVisitor):
             self.imported.add(self.resolve(module, alias.name))
 
     def visit_If(self, node: ast.If) -> None:
-        # the body of if TYPE_CHECKING does not run, but its else branch does
-        if _is_type_checking(node.test):
+        # the body of if TYPE_CHECKING and of if __name__ == "__main__" does not run on
+        # import, but the else branch of either does
+        if not _runs_on_import(node.test):
             for child in node.orelse:
                 self.visit(child)
             return

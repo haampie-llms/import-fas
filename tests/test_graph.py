@@ -236,3 +236,33 @@ def test_a_directory_whose_name_is_not_an_identifier(tmp_path):
 def test_a_missing_directory(tmp_path):
     with pytest.raises(ValueError, match="not a package"):
         build_graph(str(tmp_path / "nope"))
+
+
+@pytest.mark.parametrize("test", ['__name__ == "__main__"', '"__main__" == __name__'])
+def test_main_block_is_skipped_but_its_else_is_kept(tree, test):
+    """The demo block at the bottom of a module does not run when it is imported."""
+    d = tree(
+        {
+            "pkg/__init__.py": "",
+            "pkg/b.py": "",
+            "pkg/c.py": "",
+            "pkg/m.py": f"if {test}:\n    import pkg.b\nelse:\n    import pkg.c\n",
+        }
+    )
+    assert edges(build_graph(d)) == {("pkg.m", "pkg.c")}
+
+
+def test_other_name_comparisons_are_not_special(tree):
+    d = tree(
+        {
+            "pkg/__init__.py": "",
+            "pkg/b.py": "",
+            "pkg/c.py": "",
+            "pkg/m.py": """if __name__ == "pkg.m":
+    import pkg.b
+if __name__ != "__main__":
+    import pkg.c
+""",
+        }
+    )
+    assert edges(build_graph(d)) == {("pkg.m", "pkg.b"), ("pkg.m", "pkg.c")}
