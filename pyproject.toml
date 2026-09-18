@@ -1,6 +1,6 @@
 [project]
 name = "uncycle"
-description = "Find the import statements that make a Python package's import graph cyclic"
+description = "Find the fewest import statements to remove to break all circular imports"
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
@@ -8,15 +8,18 @@ license-files = ["LICENSE"]
 authors = [{ name = "Harmen Stoppels", email = "me@harmenstoppels.nl" }]
 keywords = ["imports", "circular imports", "feedback arc set", "static analysis"]
 classifiers = [
+  "Environment :: Console",
   "Intended Audience :: Developers",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
   "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = ["clingo"]
 dynamic = ["version"]
 
 [project.urls]
-Home = "https://github.com/haampie/uncycle"
+Homepage = "https://github.com/haampie/uncycle"
+Repository = "https://github.com/haampie/uncycle"
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mypy"]

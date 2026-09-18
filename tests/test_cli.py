@@ -180,3 +180,29 @@ def test_color(monkeypatch, env, colored):
     for key, value in env.items():
         monkeypatch.setenv(key, value)
     assert ("\033[" in cli.colorize("hi", "1")) is colored
+
+
+def test_a_module_file_instead_of_its_package(tree, run, capsys):
+    d = tree(CYCLE)
+    assert (
+        run(
+            d + "/a.py",
+        )
+        == 2
+    )
+    assert "is a module; pass its package directory" in capsys.readouterr().err
+
+
+def test_a_file_that_is_not_a_graph_names_the_file(tmp_path, run, capsys):
+    f = tmp_path / "notes.txt"
+    f.write_text("hello\n")
+    assert run(str(f)) == 2
+    assert capsys.readouterr().err.startswith(f"uncycle: {f}: not a graph file")
+
+
+def test_a_relative_import_above_the_package_warns_on_stderr(tree, run, capsys):
+    d = tree({"pkg/__init__.py": "", "pkg/m.py": "from ... import x\n"})
+    assert run(d) == 0
+    out, err = capsys.readouterr()
+    assert out == "0 dependencies to remove\n"
+    assert err.startswith("uncycle: warning: ") and "m.py:1" in err

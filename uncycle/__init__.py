@@ -1,4 +1,4 @@
-"""Find the import statements that make a Python package's import graph cyclic."""
+"""Find the fewest import statements to remove to break all circular imports."""
 
 from .fas import minimum_feedback_arc_set
 from .graph import Edge, Graph, build_graph
