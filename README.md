@@ -1,6 +1,6 @@
 # import-fas
 
-A Python tool to find the least number of `import` statements to remove so that your imports are acyclic.
+A Python tool to find the least number of `import` statements to break all circular imports.
 
 ![A five-module import graph with two cycles; one edge, shown dashed, breaks both](https://raw.githubusercontent.com/haampie-llms/import-fas/main/docs/feedback-arc-set.svg)
 
@@ -14,7 +14,7 @@ It works by computing the so-called [Feedback Arc Set][1] on the graph of Python
 import-fas [--exclude REGEX] [--inline] [--baseline OLD] [--dump-graph FILE] PACKAGE
 ```
 
-### Listing the problematic import
+### Listing problematic import statements
 
 Use `import-fas path/to/pkg` to list the minimal import statements to delete to make the package acyclic: 
 
@@ -57,7 +57,7 @@ pip install git+https://github.com/haampie-llms/import-fas
 - `--exclude REGEX`: exclude certain modules, for example: `'^app\.(vendor|tests)\b'`.
 - `--inline`: also count imports inside functions and classes.
 - `--baseline OLD`: an older version of the package. Lists the import statements this version added to the problem, and exits 1 if more dependencies have to go than before.
-- `--dump-graph FILE`: write the import graph to `FILE` (`-` for stdout) instead of solving it. A dumped graph is accepted anywhere a package directory is.
+- `--dump-graph FILE`: write the import graph to `FILE` (`-` for stdout) instead of solving it.
 - `--format json|text`: format of the dumped graph. Defaults to `text` when `FILE` ends in `.txt`, otherwise `json`.
 
 ## Exit status
@@ -76,30 +76,22 @@ fas = import_fas.minimum_feedback_arc_set(graph)
 print(graph.names(fas))  # [('app.db', 'app.models')]
 ```
 
-## What ends up in the graph
+## The import graph
 
-- Only the package's own modules. Imports of anything outside it are dropped.
-- `from foo import bar` is an edge to `foo.bar` if that is a submodule, otherwise to `foo`.
-- `import a.b.c` is one edge to `a.b.c`. A cycle that closes only through `a/__init__.py`
-  or `a/b/__init__.py` is not in the graph.
-- The bodies of `if TYPE_CHECKING:` and `if __name__ == "__main__":` are skipped. Every
-  other conditional import counts, including both arms of `try: ... except ImportError:`.
-- Imports inside functions and classes only count with `--inline`.
-- An import of a package's own submodule, such as `from . import y` in `pkg/__init__.py`,
-  is never proposed for removal: the point of the package is to expose the submodule.
-- A submodule that does `import pkg as p` to reach `p.thing` at call time is in a cycle
-  with its own package. Such edges are real and stay; in packages written that way they
-  can dominate the count. Drop the edges into the root from a dumped graph and run it again to ask
-  the narrower question.
-- A graph usually has many optimal solutions. The count is the contract; the set is one
-  suggestion among several.
+The import graph is constructed statically using AST parsing. Imports under `if TYPE_CHECKING` and `if __name__ == "__main__"` are dropped. Dynamic imports inside functions and classes only count with `--inline`.
+
+## Notes
+
+Imports of *submodules* are never reported to make things actionable. Consider a module `foo` that imports a submodule `foo.bar` to re-export some of its API: it's practically impossible to eliminate this import. Technically this means that we're computing a constrained version of the feedback arc set.
+
+Also notice there are typically many optimal solutions, but only one (arbitrary) solution is printed. For example a trivial cycle `a -> b -> c -> a` can be made acyclic by removing any edge.
 
 ## See also
 
-- pylint's [`cyclic-import`](https://pylint.readthedocs.io/en/stable/user_guide/messages/refactor/cyclic-import.html),
-  [pycycle](https://github.com/bndr/pycycle) and [import-linter](https://github.com/seddonym/import-linter)
-  report every cycle they find, one chain of modules per cycle. In a package with many
-  cycles that is a long list; `import-fas` reports the few imports that break all of them.
+- pylint's [`cyclic-import`][2], [pycycle][3] and [import-linter][4] report every cycle they find, one chain of modules per cycle. In a package with many cycles that is a long list; `import-fas` reports the few imports that break all of them.
 - The minimum is exact, computed with [clingo](https://potassco.org/clingo/).
 
 [1]: https://en.wikipedia.org/wiki/Feedback_arc_set
+[2]: https://pylint.readthedocs.io/en/stable/user_guide/messages/refactor/cyclic-import.html
+[3]: https://github.com/bndr/pycycle
+[4]: (https://github.com/seddonym/import-linter
