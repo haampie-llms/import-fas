@@ -21,7 +21,6 @@ import-fas graph   [--exclude REGEX] [--inline] [-o FILE] [-f json|text] PACKAGE
 Use `import-fas solve path/to/pkg` to list the minimal import statements to delete to make the package acyclic: 
 
 ```console
-$ pip download --no-deps --no-binary :all: werkzeug==3.1.8 && tar xf werkzeug-3.1.8.tar.gz
 $ import-fas solve werkzeug-3.1.8/src/werkzeug
 2 problematic import statements
 
