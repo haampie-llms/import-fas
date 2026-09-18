@@ -94,4 +94,4 @@ Also notice there are typically many optimal solutions, but only one (arbitrary)
 [1]: https://en.wikipedia.org/wiki/Feedback_arc_set
 [2]: https://pylint.readthedocs.io/en/stable/user_guide/messages/refactor/cyclic-import.html
 [3]: https://github.com/bndr/pycycle
-[4]: (https://github.com/seddonym/import-linter
+[4]: https://github.com/seddonym/import-linter
