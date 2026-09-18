@@ -16,7 +16,7 @@ import-fas [--exclude REGEX] [--inline] [--baseline OLD] [--dump-graph FILE] PAC
 
 ### Listing problematic import statements
 
-Use `import-fas path/to/pkg` to list the minimal import statements to delete to make the package acyclic: 
+Use `import-fas path/to/pkg` to list the minimal import statements to delete to break all circular imports:
 
 ```console
 $ import-fas werkzeug-3.1.8/src/werkzeug
