@@ -16,6 +16,10 @@ import-fas compare [--exclude REGEX] [--inline] OLD NEW
 import-fas graph   [--exclude REGEX] [--inline] [-o FILE] [-f json|text] PACKAGE_DIR_OR_GRAPH
 ```
 
+### Listing the problematic import
+
+Use `import-fas solve path/to/pkg` to list the minimal import statements to delete to make the package acyclic: 
+
 ```console
 $ pip download --no-deps --no-binary :all: werkzeug==3.1.8 && tar xf werkzeug-3.1.8.tar.gz
 $ import-fas solve werkzeug-3.1.8/src/werkzeug
@@ -27,7 +31,9 @@ werkzeug/http imports: werkzeug.datastructures, werkzeug.sansio.http
 ---
 ```
 
-`compare` blames the import that made a newer version worse, and exits 1:
+### Finding regressions
+
+Use `import-fas compare` to see whether a new commit or version regresses the number of problematic import statements:
 
 ```console
 $ import-fas compare before/src/werkzeug after/src/werkzeug
@@ -37,7 +43,7 @@ likely a direct consequence of the following import statement:
 werkzeug/http imports: werkzeug.sansio.http
 ```
 
-The same check on every pull request:
+This command is useful in CI:
 
 ```yaml
 - uses: actions/checkout@v5
@@ -56,7 +62,7 @@ pip install git+https://github.com/haampie-llms/import-fas
 
 ## Options
 
-- `--exclude REGEX`: drop modules whose dotted name matches, by `re.search`. A matching package is pruned with everything under it. Anchor prefixes: `'^app\.(vendor|tests)\b'`.
+- `--exclude REGEX`: exclude certain modules, for example: `'^app\.(vendor|tests)\b'`.
 - `--inline`: also count imports inside functions and classes.
 - `-o FILE`: output file for `graph`. `-` is stdout and the default.
 - `-f json|text`: output format for `graph`. Defaults to `text` when `-o` ends in `.txt`, otherwise `json`. `solve` and `compare` accept a dumped graph in place of a package directory.
