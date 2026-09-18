@@ -179,6 +179,14 @@ def main() -> int:
         print_lines(graph, fas, GREY)
         print(colorize(summary(graph, fas), BOLD))
         return 0
-    except (OSError, SyntaxError, ValueError) as e:
+    except SyntaxError as e:
+        # str(e) names only the file's basename, which is ambiguous in a package
+        where = f"{display(e.filename)}:{e.lineno}" if e.filename else "?"
+        version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        print(
+            f"uncycle: {where}: {e.msg} (parsed with Python {version})", file=sys.stderr
+        )
+        return 2
+    except (OSError, ValueError) as e:
         print(f"uncycle: {e}", file=sys.stderr)
         return 2

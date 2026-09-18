@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import sys
 
@@ -90,6 +91,24 @@ def test_no_cycles(tree, run, capsys):
 def test_a_syntax_error_in_the_package(tree, run, capsys):
     assert run(tree({"pkg/__init__.py": "", "pkg/bad.py": "def (\n"})) == 2
     assert "bad.py" in capsys.readouterr().err
+
+
+def test_a_syntax_error_names_the_path_and_line(tree, run, capsys, monkeypatch):
+    """Not just ``invalid syntax (utils.py, line 2)``: packages have many utils.py."""
+    d = tree(
+        {
+            "pkg/__init__.py": "",
+            "pkg/utils.py": "",
+            "pkg/sub/__init__.py": "",
+            "pkg/sub/utils.py": "x = 1\ndef (\n",
+        }
+    )
+    monkeypatch.chdir(d)
+    assert run(".") == 2
+    err = capsys.readouterr().err
+    version = f"{sys.version_info.major}.{sys.version_info.minor}"
+    assert err.startswith(f"uncycle: {os.path.join('sub', 'utils.py')}:2: ")
+    assert err.rstrip().endswith(f"(parsed with Python {version})")
 
 
 def test_compare_unchanged(tree, run, capsys):
