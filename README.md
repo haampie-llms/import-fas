@@ -24,17 +24,17 @@ Use `import-fas solve path/to/pkg` to list the minimal import statements to dele
 $ import-fas solve werkzeug-3.1.8/src/werkzeug
 werkzeug-3.1.8/src/werkzeug/http.py:1442: imports werkzeug.datastructures
 werkzeug-3.1.8/src/werkzeug/http.py:1443: imports werkzeug.sansio.http
-2 imports to remove
+2 dependencies to remove
 ```
 
 ### Finding regressions
 
-Use `import-fas compare` to see whether a new commit or version regresses the number of imports to remove:
+Use `import-fas compare` to see whether a new commit or version regresses the number of dependencies to remove:
 
 ```console
 $ import-fas compare Werkzeug-2.1.2/src/werkzeug Werkzeug-2.2.0/src/werkzeug
 Werkzeug-2.2.0/src/werkzeug/http.py:1305: imports werkzeug.sansio.http
-imports to remove increased from 1 to 2
+dependencies to remove increased from 1 to 2
 ```
 
 This command is useful in CI:

@@ -22,10 +22,6 @@ def colorize(text: str, *codes: str) -> str:
     return f"\033[{';'.join(codes)}m{text}\033[0m"
 
 
-def plural(n: int, word: str) -> str:
-    return word if n == 1 else f"{word}s"
-
-
 def display(path: str) -> str:
     """A path relative to the working directory when that is inside it, else as is."""
     try:
@@ -55,6 +51,20 @@ def print_lines(graph: Graph, edges: Iterable[Edge], *codes: str) -> None:
         print(colorize(line, *codes))
 
 
+def dependencies(n: int) -> str:
+    return f"{n} {'dependency' if n == 1 else 'dependencies'}"
+
+
+def summary(graph: Graph, fas: Iterable[Edge]) -> str:
+    """``2 dependencies to remove``, and when they span more import statements than that,
+    ``11 dependencies (14 import statements) to remove``."""
+    fas = list(fas)
+    statements = len(lines(graph, fas))
+    if statements == len(fas):
+        return f"{dependencies(len(fas))} to remove"
+    return f"{dependencies(len(fas))} ({statements} import statements) to remove"
+
+
 def compare(old: Graph, new: Graph) -> int:
     """Print the import statements this change added to the solution, and the count."""
     old_fas = minimum_feedback_arc_set(old)
@@ -65,10 +75,10 @@ def compare(old: Graph, new: Graph) -> int:
     if difference <= 0:
         print_lines(new, new_fas, GREY)
         if difference == 0:
-            summary = f"imports to remove unchanged at {after}"
+            change = f"dependencies to remove unchanged at {after}"
         else:
-            summary = f"imports to remove decreased from {before} to {after}"
-        print(colorize(summary, GREEN, BOLD))
+            change = f"dependencies to remove decreased from {before} to {after}"
+        print(colorize(change, GREEN, BOLD))
         return 0
 
     # Solve the new graph again without the edges the old solution already blamed, so what is
@@ -84,7 +94,8 @@ def compare(old: Graph, new: Graph) -> int:
     if len(blamed) > difference:
         print(f"removing any {difference} of the following would undo the increase:")
         print_lines(new, new_fas, GREY)
-    print(colorize(f"imports to remove increased from {before} to {after}", RED, BOLD))
+    change = f"dependencies to remove increased from {before} to {after}"
+    print(colorize(change, RED, BOLD))
     return 1
 
 
@@ -155,7 +166,7 @@ def main() -> int:
             graph = load(args.package, args.exclude, args.inline, parser)
             fas = minimum_feedback_arc_set(graph)
             print_lines(graph, fas, GREY)
-            print(colorize(f"{len(fas)} {plural(len(fas), 'import')} to remove", BOLD))
+            print(colorize(summary(graph, fas), BOLD))
             return 0
 
         old = load(args.old, args.exclude, args.inline, parser)
