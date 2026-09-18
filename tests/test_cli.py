@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import sys
 
@@ -92,13 +93,53 @@ def test_a_syntax_error_in_the_package(tree, run, capsys):
     assert "bad.py" in capsys.readouterr().err
 
 
+def test_a_syntax_error_names_the_path_and_line(tree, run, capsys, monkeypatch):
+    """Not just ``invalid syntax (utils.py, line 2)``: packages have many utils.py."""
+    d = tree(
+        {
+            "pkg/__init__.py": "",
+            "pkg/utils.py": "",
+            "pkg/sub/__init__.py": "",
+            "pkg/sub/utils.py": "x = 1\ndef (\n",
+        }
+    )
+    monkeypatch.chdir(d)
+    assert run(".") == 2
+    err = capsys.readouterr().err
+    version = f"{sys.version_info.major}.{sys.version_info.minor}"
+    assert err.startswith(f"uncycle: {os.path.join('sub', 'utils.py')}:2: ")
+    assert err.rstrip().endswith(f"(parsed with Python {version})")
+
+
 def test_compare_unchanged(tree, run, capsys):
+    """Only the count: the current solution is arbitrary and blames nothing new."""
     d = tree(CYCLE)
     assert run(d, "--baseline", d) == 0
+    assert capsys.readouterr().out == "dependencies to remove unchanged at 1\n"
+
+
+def test_compare_improved_with_cycles_left(tmp_path, run, capsys):
+    """Statements that still have to go are not listed as if the change added them."""
+    for name, source in {
+        "old/pkg/__init__.py": "",
+        "old/pkg/a.py": "import pkg.b",
+        "old/pkg/b.py": "import pkg.a",
+        "old/pkg/c.py": "import pkg.d",
+        "old/pkg/d.py": "import pkg.c",
+        "new/pkg/__init__.py": "",
+        "new/pkg/a.py": "import pkg.b",
+        "new/pkg/b.py": "",
+        "new/pkg/c.py": "import pkg.d",
+        "new/pkg/d.py": "import pkg.c",
+    }.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source)
     assert (
-        capsys.readouterr().out.splitlines()[-1]
-        == "dependencies to remove unchanged at 1"
+        run(str(tmp_path / "new" / "pkg"), "--baseline", str(tmp_path / "old" / "pkg"))
+        == 0
     )
+    assert capsys.readouterr().out == "dependencies to remove decreased from 2 to 1\n"
 
 
 def test_compare_improved(tmp_path, run, capsys):
