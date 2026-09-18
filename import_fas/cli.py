@@ -1,4 +1,4 @@
-"""Report the import statements that have to go to make a package's import graph acyclic."""
+"""List the import statements to remove to make a Python package's import graph acyclic."""
 
 from __future__ import annotations
 
@@ -111,8 +111,13 @@ def load(
         return read_graph(f)
 
 
-def add_source(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("package", metavar="PACKAGE_DIR_OR_GRAPH")
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="import-fas", description=__doc__)
+    parser.add_argument(
+        "package",
+        metavar="PACKAGE",
+        help="a package directory, or a graph file written by --dump-graph",
+    )
     parser.add_argument(
         "--exclude",
         metavar="REGEX",
@@ -124,54 +129,46 @@ def add_source(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="include imports inside functions and classes",
     )
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(prog="import-fas", description=__doc__)
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    dump = sub.add_parser("graph", help="dump the import graph the solver sees")
-    add_source(dump)
-    dump.add_argument(
-        "-o", "--output", default="-", help="output file, - for stdout (default)"
+    parser.add_argument(
+        "--baseline",
+        metavar="OLD",
+        help="an older version of the package: list the import statements this version "
+        "added to the problem, and exit 1 if more dependencies have to go than before",
     )
-    dump.add_argument(
-        "-f", "--format", choices=FORMATS, help="default: from -o, else json"
+    parser.add_argument(
+        "--dump-graph",
+        metavar="FILE",
+        help="write the import graph to FILE (- for stdout) instead of solving it",
     )
-
-    add_source(sub.add_parser("solve", help="report the imports that break all cycles"))
-
-    cmp_parser = sub.add_parser(
-        "compare", help="fail if the new tree needs more removals"
+    parser.add_argument(
+        "--format",
+        choices=FORMATS,
+        help="format of the dumped graph; default: text if FILE ends in .txt, else json",
     )
-    cmp_parser.add_argument("old", metavar="OLD")
-    cmp_parser.add_argument("new", metavar="NEW")
-    cmp_parser.add_argument("--exclude", metavar="REGEX")
-    cmp_parser.add_argument("--inline", action="store_true")
-
     args = parser.parse_args()
 
     try:
-        if args.command == "graph":
-            graph = load(args.package, args.exclude, args.inline, parser)
-            format = args.format or ("text" if args.output.endswith(".txt") else "json")
-            if args.output == "-":
+        graph = load(args.package, args.exclude, args.inline, parser)
+
+        if args.dump_graph is not None:
+            file = args.dump_graph
+            format = args.format or ("text" if file.endswith(".txt") else "json")
+            if file == "-":
                 write_graph(graph, sys.stdout, format)
             else:
-                with open(args.output, "w", encoding="utf-8") as f:
+                with open(file, "w", encoding="utf-8") as f:
                     write_graph(graph, f, format)
             return 0
 
-        if args.command == "solve":
-            graph = load(args.package, args.exclude, args.inline, parser)
-            fas = minimum_feedback_arc_set(graph)
-            print_lines(graph, fas, GREY)
-            print(colorize(summary(graph, fas), BOLD))
-            return 0
+        if args.baseline is not None:
+            return compare(
+                load(args.baseline, args.exclude, args.inline, parser), graph
+            )
 
-        old = load(args.old, args.exclude, args.inline, parser)
-        new = load(args.new, args.exclude, args.inline, parser)
-        return compare(old, new)
+        fas = minimum_feedback_arc_set(graph)
+        print_lines(graph, fas, GREY)
+        print(colorize(summary(graph, fas), BOLD))
+        return 0
     except (OSError, SyntaxError, ValueError) as e:
         print(f"import-fas: {e}", file=sys.stderr)
         return 2

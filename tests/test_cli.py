@@ -24,7 +24,7 @@ def run(monkeypatch):
 
 
 def test_graph_to_stdout(tree, run, capsys):
-    assert run("graph", tree(CYCLE)) == 0
+    assert run(tree(CYCLE), "--dump-graph", "-") == 0
     data = json.loads(capsys.readouterr().out)
     assert data["nodes"] == ["pkg", "pkg.a", "pkg.b", "pkg.lonely"]
     assert data["edges"] == [[1, 2], [2, 1]]
@@ -33,15 +33,15 @@ def test_graph_to_stdout(tree, run, capsys):
 @pytest.mark.parametrize("name,first", [("g.json", "{"), ("g.txt", "4")])
 def test_the_format_follows_the_output_name(tree, run, tmp_path, name, first):
     out = tmp_path / name
-    assert run("graph", tree(CYCLE), "-o", str(out)) == 0
+    assert run(tree(CYCLE), "--dump-graph", str(out)) == 0
     assert out.read_text().startswith(first)
 
 
 def test_a_dumped_graph_can_be_read_back(tree, run, tmp_path, capsys):
     out = tmp_path / "g.txt"
-    assert run("graph", tree(CYCLE), "-o", str(out)) == 0
+    assert run(tree(CYCLE), "--dump-graph", str(out)) == 0
     capsys.readouterr()
-    assert run("solve", str(out)) == 0
+    assert run(str(out)) == 0
     lines = capsys.readouterr().out.splitlines()
     assert re.fullmatch(r"pkg\.[ab]: imports pkg\.[ab]", lines[0])
     assert lines[-1] == "1 dependency to remove"
@@ -49,14 +49,14 @@ def test_a_dumped_graph_can_be_read_back(tree, run, tmp_path, capsys):
 
 def test_extraction_flags_do_not_apply_to_a_graph_file(tree, run, tmp_path):
     out = tmp_path / "g.json"
-    run("graph", tree(CYCLE), "-o", str(out))
+    run(tree(CYCLE), "--dump-graph", str(out))
     with pytest.raises(SystemExit) as excinfo:
-        run("solve", str(out), "--inline")
+        run(str(out), "--inline")
     assert excinfo.value.code == 2
 
 
 def test_solve(tree, run, capsys):
-    assert run("solve", tree(CYCLE)) == 0
+    assert run(tree(CYCLE)) == 0
     lines = capsys.readouterr().out.splitlines()
     assert re.search(r"pkg/[ab]\.py:1: imports pkg\.[ab]$", lines[0])
     assert lines[-1] == "1 dependency to remove"
@@ -72,7 +72,7 @@ def test_every_statement_behind_an_edge_is_listed(tree, run, capsys):
             "pkg/c.py": "import pkg.a",
         }
     )
-    assert run("solve", d) == 0
+    assert run(d) == 0
     lines = capsys.readouterr().out.splitlines()
     assert lines[0].endswith("pkg/a.py:1: imports pkg.b")
     assert lines[1].endswith("pkg/a.py:2: imports pkg.b")
@@ -80,18 +80,18 @@ def test_every_statement_behind_an_edge_is_listed(tree, run, capsys):
 
 
 def test_no_cycles(tree, run, capsys):
-    assert run("solve", tree({"pkg/__init__.py": "", "pkg/a.py": "import pkg"})) == 0
+    assert run(tree({"pkg/__init__.py": "", "pkg/a.py": "import pkg"})) == 0
     assert capsys.readouterr().out == "0 dependencies to remove\n"
 
 
 def test_a_syntax_error_in_the_package(tree, run, capsys):
-    assert run("solve", tree({"pkg/__init__.py": "", "pkg/bad.py": "def (\n"})) == 2
+    assert run(tree({"pkg/__init__.py": "", "pkg/bad.py": "def (\n"})) == 2
     assert "bad.py" in capsys.readouterr().err
 
 
 def test_compare_unchanged(tree, run, capsys):
     d = tree(CYCLE)
-    assert run("compare", d, d) == 0
+    assert run(d, "--baseline", d) == 0
     assert (
         capsys.readouterr().out.splitlines()[-1]
         == "dependencies to remove unchanged at 1"
@@ -111,7 +111,7 @@ def test_compare_improved(tmp_path, run, capsys):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(source)
     assert (
-        run("compare", str(tmp_path / "old" / "pkg"), str(tmp_path / "new" / "pkg"))
+        run(str(tmp_path / "new" / "pkg"), "--baseline", str(tmp_path / "old" / "pkg"))
         == 0
     )
     assert capsys.readouterr().out == "dependencies to remove decreased from 1 to 0\n"
@@ -130,7 +130,7 @@ def test_compare_worse(tmp_path, run, capsys):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(source)
     assert (
-        run("compare", str(tmp_path / "old" / "pkg"), str(tmp_path / "new" / "pkg"))
+        run(str(tmp_path / "new" / "pkg"), "--baseline", str(tmp_path / "old" / "pkg"))
         == 1
     )
     lines = capsys.readouterr().out.splitlines()
@@ -154,7 +154,7 @@ def test_compare_when_a_blamed_edge_is_gone(tmp_path, run, capsys):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(source)
     assert (
-        run("compare", str(tmp_path / "old" / "pkg"), str(tmp_path / "new" / "pkg"))
+        run(str(tmp_path / "new" / "pkg"), "--baseline", str(tmp_path / "old" / "pkg"))
         == 0
     )
     assert (

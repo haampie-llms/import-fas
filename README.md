@@ -11,17 +11,15 @@ It works by computing the so-called [Feedback Arc Set][1] on the graph of Python
 ## Usage
 
 ```
-import-fas solve   [--exclude REGEX] [--inline] PACKAGE_DIR_OR_GRAPH
-import-fas compare [--exclude REGEX] [--inline] OLD NEW
-import-fas graph   [--exclude REGEX] [--inline] [-o FILE] [-f json|text] PACKAGE_DIR_OR_GRAPH
+import-fas [--exclude REGEX] [--inline] [--baseline OLD] [--dump-graph FILE] PACKAGE
 ```
 
 ### Listing the problematic import
 
-Use `import-fas solve path/to/pkg` to list the minimal import statements to delete to make the package acyclic: 
+Use `import-fas path/to/pkg` to list the minimal import statements to delete to make the package acyclic: 
 
 ```console
-$ import-fas solve werkzeug-3.1.8/src/werkzeug
+$ import-fas werkzeug-3.1.8/src/werkzeug
 werkzeug-3.1.8/src/werkzeug/http.py:1442: imports werkzeug.datastructures
 werkzeug-3.1.8/src/werkzeug/http.py:1443: imports werkzeug.sansio.http
 2 dependencies to remove
@@ -29,15 +27,15 @@ werkzeug-3.1.8/src/werkzeug/http.py:1443: imports werkzeug.sansio.http
 
 ### Finding regressions
 
-Use `import-fas compare` to see whether a new commit or version regresses the number of dependencies to remove:
+Use `--baseline` to see whether a new commit or version regresses the number of dependencies to remove:
 
 ```console
-$ import-fas compare Werkzeug-2.1.2/src/werkzeug Werkzeug-2.2.0/src/werkzeug
+$ import-fas Werkzeug-2.2.0/src/werkzeug --baseline Werkzeug-2.1.2/src/werkzeug
 Werkzeug-2.2.0/src/werkzeug/http.py:1305: imports werkzeug.sansio.http
 dependencies to remove increased from 1 to 2
 ```
 
-This command is useful in CI:
+This check is useful in CI:
 
 ```yaml
 - uses: actions/checkout@v5
@@ -45,7 +43,7 @@ This command is useful in CI:
 - uses: actions/checkout@v5
   with: { path: new }
 - run: pip install git+https://github.com/haampie-llms/import-fas
-- run: import-fas compare old/src/mypkg new/src/mypkg
+- run: import-fas new/src/mypkg --baseline old/src/mypkg
 ```
 
 ## Install
@@ -58,13 +56,14 @@ pip install git+https://github.com/haampie-llms/import-fas
 
 - `--exclude REGEX`: exclude certain modules, for example: `'^app\.(vendor|tests)\b'`.
 - `--inline`: also count imports inside functions and classes.
-- `-o FILE`: output file for `graph`. `-` is stdout and the default.
-- `-f json|text`: output format for `graph`. Defaults to `text` when `-o` ends in `.txt`, otherwise `json`. `solve` and `compare` accept a dumped graph in place of a package directory.
+- `--baseline OLD`: an older version of the package. Lists the import statements this version added to the problem, and exits 1 if more dependencies have to go than before.
+- `--dump-graph FILE`: write the import graph to `FILE` (`-` for stdout) instead of solving it. A dumped graph is accepted anywhere a package directory is.
+- `--format json|text`: format of the dumped graph. Defaults to `text` when `FILE` ends in `.txt`, otherwise `json`.
 
 ## Exit status
 
-- `0`: `solve` or `graph` ran, or `compare` found no increase.
-- `1`: `compare` found an increase.
+- `0`: the dependencies were listed, or no more of them have to go than in the baseline.
+- `1`: more dependencies have to go than in the baseline.
 - `2`: a file could not be read or parsed, or the arguments were invalid.
 
 ## Python API
@@ -90,7 +89,7 @@ print(graph.names(fas))  # [('app.db', 'app.models')]
   is never proposed for removal: the point of the package is to expose the submodule.
 - A submodule that does `import pkg as p` to reach `p.thing` at call time is in a cycle
   with its own package. Such edges are real and stay; in packages written that way they
-  can dominate the count. Drop the edges into the root from a dump and re-solve to ask
+  can dominate the count. Drop the edges into the root from a dumped graph and run it again to ask
   the narrower question.
 - A graph usually has many optimal solutions. The count is the contract; the set is one
   suggestion among several.
