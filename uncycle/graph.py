@@ -139,14 +139,33 @@ def build_graph(
         raise ValueError(f"{package_dir}: not a package, it has no __init__.py")
 
     cache: dict[tuple[str, str], str] = {}
+    listings: dict[str, frozenset[str]] = {}
+
+    def listing(directory: str) -> frozenset[str]:
+        if directory not in listings:
+            try:
+                listings[directory] = frozenset(os.listdir(directory))
+            except OSError:
+                listings[directory] = frozenset()
+        return listings[directory]
+
+    def exists(parts: list[str], leaf: str) -> bool:
+        """Whether ``root/parts.../leaf`` exists, spelled exactly so. Unlike ``os.path``,
+        this does not match ``Config`` to ``config.py`` on a case-insensitive filesystem."""
+        directory = root
+        for part in parts:
+            if part not in listing(directory):
+                return False
+            directory = os.path.join(directory, part)
+        return leaf in listing(directory)
 
     def resolve(module: str, attr: str) -> str:
         """``from foo import bar`` is ``foo.bar`` when bar is a submodule, else ``foo``."""
         key = (module, attr)
         if key not in cache:
-            path = os.path.join(root, module.replace(".", os.sep), attr)
-            is_module = os.path.isfile(f"{path}.py") or os.path.isfile(
-                os.path.join(path, "__init__.py")
+            parts = module.split(".")
+            is_module = exists(parts, f"{attr}.py") or exists(
+                [*parts, attr], "__init__.py"
             )
             cache[key] = f"{module}.{attr}" if is_module else module
         return cache[key]

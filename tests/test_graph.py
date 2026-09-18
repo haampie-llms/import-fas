@@ -20,6 +20,29 @@ def test_from_import_attribute(tree):
     assert edges(build_graph(d)) == {("pkg.m", "pkg")}
 
 
+def test_from_import_attribute_named_like_a_submodule(tree):
+    """``Config`` is the class, not ``config.py``, also on a case-insensitive filesystem."""
+    d = tree(
+        {
+            "pkg/__init__.py": "from .config import Config",
+            "pkg/config.py": "class Config: pass",
+            "pkg/m.py": "from . import Config",
+        }
+    )
+    assert edges(build_graph(d)) == {("pkg", "pkg.config"), ("pkg.m", "pkg")}
+
+
+def test_from_import_attribute_named_like_a_subpackage(tree):
+    d = tree(
+        {
+            "pkg/__init__.py": "from .sub import Sub",
+            "pkg/sub/__init__.py": "class Sub: pass",
+            "pkg/m.py": "from pkg import Sub",
+        }
+    )
+    assert edges(build_graph(d)) == {("pkg", "pkg.sub"), ("pkg.m", "pkg")}
+
+
 def test_from_subpackage_import_submodule(tree):
     d = tree(
         {
