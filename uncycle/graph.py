@@ -6,6 +6,7 @@ import ast
 import dataclasses
 import os
 import re
+import warnings
 from collections.abc import Callable, Iterable
 from importlib.util import resolve_name
 
@@ -61,41 +62,52 @@ def _runs_on_import(test: ast.expr) -> bool:
     return not _is_type_checking(test) and not _is_main(test)
 
 
-class ImportVisitor(ast.NodeVisitor):
-    def __init__(
-        self, resolve: Callable[[str, str], str], current_pkg: str, inline: bool
-    ):
-        self.imported: dict[str, set[int]] = {}
-        self.resolve = resolve
-        self.current_pkg = current_pkg
-        self.inline = inline
+_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
-    def visit_Import(self, node: ast.Import) -> None:
-        # import statements are always absolute
-        for alias in node.names:
-            self.imported.setdefault(alias.name, set()).add(node.lineno)
 
-    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-        # import from can be relative or absolute, and the alias can be a submodule or attribute
-        module = resolve_name("." * node.level + (node.module or ""), self.current_pkg)
-        for alias in node.names:
-            name = self.resolve(module, alias.name)
-            self.imported.setdefault(name, set()).add(node.lineno)
+def collect_imports(
+    tree: ast.AST,
+    resolve: Callable[[str, str], str],
+    current_pkg: str,
+    inline: bool,
+    warn: Callable[[str], None],
+    path: str,
+) -> dict[str, set[int]]:
+    """The modules a module imports, each with the lines of the statements that do so.
 
-    def visit_If(self, node: ast.If) -> None:
-        # the body of if TYPE_CHECKING and of if __name__ == "__main__" does not run on
-        # import, but the else branch of either does
-        if not _runs_on_import(node.test):
-            for child in node.orelse:
-                self.visit(child)
-            return
-        self.generic_visit(node)
-
-    def visit_scope(self, node: ast.AST) -> None:
-        if self.inline:
-            self.generic_visit(node)
-
-    visit_FunctionDef = visit_AsyncFunctionDef = visit_ClassDef = visit_scope
+    Iterative rather than a NodeVisitor, since a generated file with a very long
+    expression nests deeper than the recursion limit."""
+    imported: dict[str, set[int]] = {}
+    stack: list[ast.AST] = [tree]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, ast.Import):
+            # import statements are always absolute
+            for alias in node.names:
+                imported.setdefault(alias.name, set()).add(node.lineno)
+        elif isinstance(node, ast.ImportFrom):
+            # from imports can be relative, and the alias can be a submodule or attribute
+            try:
+                module = resolve_name(
+                    "." * node.level + (node.module or ""), current_pkg
+                )
+            except ImportError:
+                # such a statement fails at runtime too; it is in a template or dead code
+                warn(
+                    f"{path}:{node.lineno}: relative import beyond the package, skipped"
+                )
+                continue
+            for alias in node.names:
+                imported.setdefault(resolve(module, alias.name), set()).add(node.lineno)
+        elif isinstance(node, ast.If) and not _runs_on_import(node.test):
+            # the body of if TYPE_CHECKING and of if __name__ == "__main__" does not run
+            # on import, but the else branch of either does
+            stack.extend(node.orelse)
+        elif isinstance(node, _SCOPES) and not inline:
+            continue
+        else:
+            stack.extend(ast.iter_child_nodes(node))
+    return imported
 
 
 def _is_package_dir(entry: os.DirEntry[str]) -> bool:
@@ -111,10 +123,14 @@ def _is_module_file(entry: os.DirEntry[str]) -> bool:
 
 
 def build_graph(
-    package_dir: str, exclude: str | None = None, inline: bool = False
+    package_dir: str,
+    exclude: str | None = None,
+    inline: bool = False,
+    warn: Callable[[str], None] = warnings.warn,
 ) -> Graph:
     """The import graph of a package. Modules whose name matches the ``exclude`` regex are left
-    out; ``inline`` includes imports inside functions and classes."""
+    out; ``inline`` includes imports inside functions and classes. Statements that cannot be
+    imports of anything, such as a relative import above the package, go to ``warn``."""
     package_dir = os.path.abspath(package_dir)
     root, pkg = os.path.split(package_dir)
     if not pkg.isidentifier():
@@ -165,11 +181,13 @@ def build_graph(
                     if not keep(current):
                         continue
                     modules.add(current)
-                    visitor = ImportVisitor(resolve, subpkg, inline)
                     # bytes, so that ast honors a PEP 263 coding cookie
                     with open(entry.path, "rb") as f:
-                        visitor.visit(ast.parse(f.read(), filename=entry.path))
-                    for m, lines in visitor.imported.items():
+                        tree = ast.parse(f.read(), filename=entry.path)
+                    imported = collect_imports(
+                        tree, resolve, subpkg, inline, warn, entry.path
+                    )
+                    for m, lines in imported.items():
                         # a self-loop is a cycle no reshuffling of imports can break
                         if m != current and keep(m):
                             edges.setdefault((current, m), []).extend(

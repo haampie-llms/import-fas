@@ -1,4 +1,4 @@
-"""List the import statements to remove to make a Python package's import graph acyclic."""
+"""List the fewest import statements to remove to break all circular imports in a Python package."""
 
 from __future__ import annotations
 
@@ -104,11 +104,20 @@ def load(
 ) -> Graph:
     """A package directory to analyze, or a graph file dumped earlier."""
     if os.path.isdir(path):
-        return build_graph(path, exclude, inline)
+        return build_graph(path, exclude, inline, warn)
+    if path.endswith(".py"):
+        raise ValueError(f"{path}: is a module; pass its package directory instead")
     if exclude is not None or inline:
         parser.error(f"--exclude and --inline do not apply to a graph file: {path}")
-    with open(path, encoding="utf-8") as f:
-        return read_graph(f)
+    try:
+        with open(path, encoding="utf-8") as f:
+            return read_graph(f)
+    except ValueError as e:
+        raise ValueError(f"{path}: {e}") from None
+
+
+def warn(message: str) -> None:
+    print(colorize(f"uncycle: warning: {message}", GREY), file=sys.stderr)
 
 
 def main() -> int:

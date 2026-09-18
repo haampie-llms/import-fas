@@ -1,6 +1,6 @@
 # uncycle
 
-A Python tool to find the least number of `import` statements to break all circular imports.
+A Python tool to find the fewest `import` statements to remove to break all circular imports.
 
 ![A five-module import graph with two cycles; one edge, shown dashed, breaks both](https://raw.githubusercontent.com/haampie/uncycle/main/docs/feedback-arc-set.svg)
 
@@ -42,14 +42,14 @@ This check is useful in CI:
   with: { ref: "${{ github.event.pull_request.base.sha }}", path: old }
 - uses: actions/checkout@v5
   with: { path: new }
-- run: pip install git+https://github.com/haampie/uncycle
+- run: pip install uncycle
 - run: uncycle new/src/mypkg --baseline old/src/mypkg
 ```
 
 ## Install
 
 ```
-pip install git+https://github.com/haampie/uncycle
+pip install uncycle
 ```
 
 ## Options

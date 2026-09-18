@@ -297,3 +297,21 @@ if __name__ != "__main__":
         }
     )
     assert edges(build_graph(d)) == {("pkg.m", "pkg.b"), ("pkg.m", "pkg.c")}
+
+
+def test_a_relative_import_above_the_package_is_skipped_with_a_warning(tree):
+    """Such a statement fails at runtime as well; it occurs in template files."""
+    d = tree({"pkg/__init__.py": "", "pkg/m.py": "from ... import x\nimport pkg.b\n"})
+    warned = []
+    graph = build_graph(d, warn=warned.append)
+    assert edges(graph) == {("pkg.m", "pkg.b")}
+    assert warned == [
+        f"{os.path.join(d, 'm.py')}:1: relative import beyond the package, skipped"
+    ]
+
+
+def test_a_very_long_expression_does_not_overflow_the_stack(tree):
+    """A generated lookup table nests thousands of BinOp nodes; a recursive visitor dies."""
+    source = "x = " + " + ".join(["1"] * 3000) + "\nimport pkg.b\n"
+    d = tree({"pkg/__init__.py": "", "pkg/m.py": source})
+    assert edges(build_graph(d)) == {("pkg.m", "pkg.b")}
