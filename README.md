@@ -4,9 +4,9 @@ Find the import statements that make a Python package's import graph cyclic.
 
 ![A five-module import graph with two cycles; one edge, shown dashed, breaks both](https://raw.githubusercontent.com/haampie-llms/import-fas/main/docs/feedback-arc-set.svg)
 
-The dashed edge is the minimum feedback arc set: the smallest set of imports whose removal
-leaves no cycle. Both cycles run through it, so deleting that one import makes the package
-acyclic.
+`app.db` imports `app.models` so that every table is registered before `create_all`.
+That one import closes both cycles in the graph, so it is the minimum feedback arc set:
+the smallest set of imports whose removal leaves no cycle.
 
 ## Usage
 
@@ -95,7 +95,7 @@ import import_fas
 
 graph = import_fas.build_graph("src/app", exclude=r"^app\.tests\b")
 fas = import_fas.minimum_feedback_arc_set(graph)
-print(graph.names(fas))  # [('app.models', 'app.views')]
+print(graph.names(fas))  # [('app.db', 'app.models')]
 ```
 
 ## What ends up in the graph

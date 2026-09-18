@@ -9,30 +9,30 @@
   </defs>
 
   <!-- edges -->
-  <g stroke="#8b8b8b" stroke-width="1.5" marker-end="url(#arrow)">
-    <line x1="105" y1="110" x2="178" y2="110"/>   <!-- app.cli -> app.models -->
-    <line x1="470" y1="95"  x2="402" y2="46"/>    <!-- app.views -> app.db -->
-    <line x1="320" y1="45"  x2="252" y2="94"/>    <!-- app.db -> app.models -->
-    <line x1="470" y1="125" x2="402" y2="174"/>   <!-- app.views -> app.auth -->
-    <line x1="320" y1="175" x2="252" y2="126"/>   <!-- app.auth -> app.models -->
+  <g stroke="#8b8b8b" stroke-width="1.5" fill="none" marker-end="url(#arrow)">
+    <line x1="115" y1="110" x2="178" y2="110"/>   <!-- app.views  -> app.models -->
+    <line x1="290" y1="110" x2="428" y2="110"/>   <!-- app.models -> app.db     -->
+    <line x1="250" y1="125" x2="320" y2="174"/>   <!-- app.models -> app.auth   -->
+    <line x1="400" y1="175" x2="468" y2="126"/>   <!-- app.auth   -> app.db     -->
+    <line x1="480" y1="45"  x2="480" y2="93"/>    <!-- app.cli    -> app.db     -->
   </g>
-  <!-- the minimum feedback arc set: one edge, on both cycles -->
-  <line x1="290" y1="110" x2="428" y2="110" stroke="#d9534f" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arrow-red)"/>
-  <text x="359" y="102" text-anchor="middle" fill="#d9534f" font-size="11">remove</text>
+  <!-- app.db -> app.models: registers the tables before create_all, and closes both cycles -->
+  <path d="M 420,95 Q 360,45 300,95" fill="none" stroke="#d9534f" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arrow-red)"/>
+  <text x="360" y="64" text-anchor="middle" fill="#d9534f" font-size="11">remove</text>
 
   <!-- nodes -->
   <g fill="none" stroke="#8b8b8b" stroke-width="1.5">
-    <rect x="15"  y="95"  width="90"  height="30" rx="4"/>
+    <rect x="15"  y="95"  width="100" height="30" rx="4"/>
     <rect x="180" y="95"  width="110" height="30" rx="4"/>
-    <rect x="430" y="95"  width="110" height="30" rx="4"/>
-    <rect x="305" y="15"  width="110" height="30" rx="4"/>
+    <rect x="430" y="95"  width="100" height="30" rx="4"/>
     <rect x="305" y="175" width="110" height="30" rx="4"/>
+    <rect x="430" y="15"  width="100" height="30" rx="4"/>
   </g>
   <g fill="#8b8b8b" text-anchor="middle">
-    <text x="60"  y="115">app.cli</text>
+    <text x="65"  y="115">app.views</text>
     <text x="235" y="115">app.models</text>
-    <text x="485" y="115">app.views</text>
-    <text x="360" y="35">app.db</text>
+    <text x="480" y="115">app.db</text>
     <text x="360" y="195">app.auth</text>
+    <text x="480" y="35">app.cli</text>
   </g>
 </svg>
