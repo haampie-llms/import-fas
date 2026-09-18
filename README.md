@@ -1,12 +1,12 @@
 # import-fas
 
-Find the import statements that make a Python package's import graph cyclic.
+A Python tool to find the least number of `import` statement to remove so that your imports are acyclic.
 
 ![A five-module import graph with two cycles; one edge, shown dashed, breaks both](https://raw.githubusercontent.com/haampie-llms/import-fas/main/docs/feedback-arc-set.svg)
 
-`app.db` imports `app.models` so that every table is registered before `create_all`.
-That one import closes both cycles in the graph, so it is the minimum feedback arc set:
-the smallest set of imports whose removal leaves no cycle.
+It gives you short and actionable feedback to structure your Python package better.
+
+It works by computing the so-called [Feedback Arc Set][1] on the graph of Python modules (nodes) and import statements (edges).
 
 ## Usage
 
@@ -18,8 +18,7 @@ import-fas graph   [--exclude REGEX] [--inline] [-o FILE] [-f json|text] PACKAGE
 
 `solve` builds the import graph of a package from its AST, computes an exact minimum
 feedback arc set with [clingo](https://potassco.org/clingo/), and prints the imports to
-remove. `compare` solves two versions of a package and exits 1 when the new one needs
-more removals. `graph` dumps the graph the solver sees; `solve` and `compare` accept
+remove. `compare` solves two versions of a package and exits 1 when the new one makes the p. `graph` dumps the graph the solver sees; `solve` and `compare` accept
 such a dump in place of a package directory.
 
 ## Install
@@ -28,17 +27,12 @@ such a dump in place of a package directory.
 pip install git+https://github.com/haampie-llms/import-fas
 ```
 
-Requires Python 3.9 or later. Modules are parsed with the running interpreter's `ast`, so
-use a Python at least as new as the syntax of the package under analysis.
-
 ## Options
 
-- `--exclude REGEX`: drop modules whose dotted name matches, by `re.search`. A matching
-  package is pruned with everything under it. Anchor prefixes: `'^app\.(vendor|tests)\b'`.
+- `--exclude REGEX`: drop modules whose dotted name matches, by `re.search`. A matching package is pruned with everything under it. Anchor prefixes: `'^app\.(vendor|tests)\b'`.
 - `--inline`: also count imports inside functions and classes.
 - `-o FILE`: output file for `graph`. `-` is stdout and the default.
-- `-f json|text`: output format for `graph`. Defaults to `text` when `-o` ends in
-  `.txt`, otherwise `json`.
+- `-f json|text`: output format for `graph`. Defaults to `text` when `-o` ends in `.txt`, otherwise `json`.
 
 ## Examples
 
@@ -122,3 +116,5 @@ print(graph.names(fas))  # [('app.db', 'app.models')]
   and pytest's [`test_meta.py`](https://github.com/pytest-dev/pytest/blob/main/testing/test_meta.py)
   import every submodule in a fresh interpreter and fail when one cannot stand on its own.
   They catch a cycle when it breaks; `compare` reports it when it is added.
+
+[1]: https://en.wikipedia.org/wiki/Feedback_arc_set
