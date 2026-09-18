@@ -1,5 +1,5 @@
 [project]
-name = "import-fas"
+name = "uncycle"
 description = "Find the import statements that make a Python package's import graph cyclic"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -16,23 +16,23 @@ dependencies = ["clingo"]
 dynamic = ["version"]
 
 [project.urls]
-Home = "https://github.com/haampie-llms/import-fas"
+Home = "https://github.com/haampie/uncycle"
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mypy"]
 
 [project.scripts]
-import-fas = "import_fas.cli:main"
+uncycle = "uncycle.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "import_fas/__init__.py"
+path = "uncycle/__init__.py"
 
 [tool.mypy]
-files = ["import_fas"]
+files = ["uncycle"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

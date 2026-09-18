@@ -4,7 +4,7 @@ import sys
 
 import pytest
 
-from import_fas import cli
+from uncycle import cli
 
 CYCLE = {
     "pkg/__init__.py": "",
@@ -17,7 +17,7 @@ CYCLE = {
 @pytest.fixture
 def run(monkeypatch):
     def go(*argv):
-        monkeypatch.setattr(sys, "argv", ["import-fas", *argv])
+        monkeypatch.setattr(sys, "argv", ["uncycle", *argv])
         return cli.main()
 
     return go

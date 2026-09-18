@@ -2,7 +2,7 @@ import io
 
 import pytest
 
-from import_fas import Graph, read_graph, write_graph
+from uncycle import Graph, read_graph, write_graph
 
 GRAPH = Graph(["pkg", "pkg.a", "pkg.b", "pkg.lonely"], [(0, 1), (1, 2), (2, 1)])
 
