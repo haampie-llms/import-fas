@@ -22,24 +22,19 @@ Use `import-fas solve path/to/pkg` to list the minimal import statements to dele
 
 ```console
 $ import-fas solve werkzeug-3.1.8/src/werkzeug
-2 problematic import statements
-
-All import cycles are broken by removing the following import statements:
----
-werkzeug/http imports: werkzeug.datastructures, werkzeug.sansio.http
----
+werkzeug-3.1.8/src/werkzeug/http.py:1442: imports werkzeug.datastructures
+werkzeug-3.1.8/src/werkzeug/http.py:1443: imports werkzeug.sansio.http
+2 imports to remove
 ```
 
 ### Finding regressions
 
-Use `import-fas compare` to see whether a new commit or version regresses the number of problematic import statements:
+Use `import-fas compare` to see whether a new commit or version regresses the number of imports to remove:
 
 ```console
 $ import-fas compare Werkzeug-2.1.2/src/werkzeug Werkzeug-2.2.0/src/werkzeug
-The overall number of problematic import statements increased by 1 from 1 to 2. This is
-likely a direct consequence of the following import statement:
-
-werkzeug/http imports: werkzeug.sansio.http
+Werkzeug-2.2.0/src/werkzeug/http.py:1305: imports werkzeug.sansio.http
+imports to remove increased from 1 to 2
 ```
 
 This command is useful in CI:
@@ -91,7 +86,8 @@ print(graph.names(fas))  # [('app.db', 'app.models')]
 - The bodies of `if TYPE_CHECKING:` and `if __name__ == "__main__":` are skipped. Every
   other conditional import counts, including both arms of `try: ... except ImportError:`.
 - Imports inside functions and classes only count with `--inline`.
-- A package inherits the imports of the submodules it re-exports, to a fixed point.
+- An import of a package's own submodule, such as `from . import y` in `pkg/__init__.py`,
+  is never proposed for removal: the point of the package is to expose the submodule.
 - A submodule that does `import pkg as p` to reach `p.thing` at call time is in a cycle
   with its own package. Such edges are real and stay; in packages written that way they
   can dominate the count. Drop the edges into the root from a dump and re-solve to ask

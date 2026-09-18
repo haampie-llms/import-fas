@@ -1,7 +1,7 @@
 import graphlib
 import random
 
-from import_fas import Graph, minimum_feedback_arc_set
+from import_fas import Graph, build_graph, minimum_feedback_arc_set
 
 
 def is_acyclic(graph, removed=()):
@@ -64,3 +64,26 @@ def test_the_result_always_breaks_every_cycle():
         )
         graph = Graph([str(i) for i in range(n)], edges)
         assert is_acyclic(graph, minimum_feedback_arc_set(graph))
+
+
+def test_a_re_exported_import_is_cut_once(tree):
+    """pkg exposes pkg.y, which imports pkg.foo, which imports three modules that import
+    pkg. One statement in pkg/y.py breaks every cycle; the re-export in pkg never counts."""
+    d = tree(
+        {
+            "pkg/__init__.py": "from . import y",
+            "pkg/y.py": "import pkg.foo",
+            "pkg/foo.py": "import pkg.a\nimport pkg.b\nimport pkg.c",
+            "pkg/a.py": "import pkg",
+            "pkg/b.py": "import pkg",
+            "pkg/c.py": "import pkg",
+        }
+    )
+    graph = build_graph(d)
+    assert graph.names(minimum_feedback_arc_set(graph)) == [("pkg.y", "pkg.foo")]
+
+
+def test_a_package_never_drops_the_import_of_its_own_submodule(tree):
+    d = tree({"pkg/__init__.py": "from . import y", "pkg/y.py": "import pkg"})
+    graph = build_graph(d)
+    assert graph.names(minimum_feedback_arc_set(graph)) == [("pkg.y", "pkg")]

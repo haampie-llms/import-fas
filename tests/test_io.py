@@ -11,7 +11,9 @@ GRAPH = Graph(["pkg", "pkg.a", "pkg.b", "pkg.lonely"], [(0, 1), (1, 2), (2, 1)])
 def test_a_graph_survives_a_round_trip(format):
     f = io.StringIO()
     write_graph(GRAPH, f, format)
-    assert read_graph(io.StringIO(f.getvalue())) == GRAPH
+    back = read_graph(io.StringIO(f.getvalue()))
+    assert back == GRAPH
+    assert back.locations == {}
 
 
 def test_the_json_format():

@@ -1,8 +1,9 @@
+import os
 import pathlib
 
 import pytest
 
-from import_fas import build_graph
+from import_fas import Graph, build_graph
 
 
 def edges(graph):
@@ -136,8 +137,9 @@ def test_inline_imports(tree, scope):
     assert edges(build_graph(d, inline=True)) == {("pkg.m", "pkg.b")}
 
 
-def test_re_exports_propagate_to_a_fixed_point(tree):
-    """x re-exports x.y, which re-exports x.y.z, which imports foo: x pays for foo too."""
+def test_re_exports_are_plain_edges(tree):
+    """x re-exports x.y, which re-exports x.y.z, which imports foo: only those three edges.
+    That x thereby depends on foo is the solver's business, see test_fas."""
     d = tree(
         {
             "pkg/__init__.py": "",
@@ -147,18 +149,47 @@ def test_re_exports_propagate_to_a_fixed_point(tree):
             "pkg/x/y/z.py": "import pkg.foo",
         }
     )
-    assert ("pkg.x", "pkg.foo") in edges(build_graph(d))
+    assert edges(build_graph(d)) == {
+        ("pkg.x", "pkg.x.y"),
+        ("pkg.x.y", "pkg.x.y.z"),
+        ("pkg.x.y.z", "pkg.foo"),
+    }
 
 
-def test_propagation_does_not_invent_a_self_import(tree):
+def test_an_edge_records_where_its_import_statement_is(tree):
+    """The line of a multi-line ``from`` import is that of the ``from``."""
     d = tree(
         {
             "pkg/__init__.py": "",
-            "pkg/x/__init__.py": "from . import y",
-            "pkg/x/y.py": "import pkg.x",
+            "pkg/m.py": "import os\nfrom pkg import (\n    b,\n)\n",
+            "pkg/b.py": "",
         }
     )
-    assert ("pkg.x", "pkg.x") not in edges(build_graph(d))
+    graph = build_graph(d)
+    (edge,) = graph.edges
+    assert graph.names([edge]) == [("pkg.m", "pkg.b")]
+    assert graph.locations[edge] == [(os.path.join(d, "m.py"), 2)]
+
+
+def test_two_statements_for_one_module_are_one_edge_with_two_locations(tree):
+    d = tree(
+        {
+            "pkg/__init__.py": "",
+            "pkg/m.py": "import pkg.b\nfrom pkg import b\n",
+            "pkg/b.py": "",
+        }
+    )
+    graph = build_graph(d)
+    (edge,) = graph.edges
+    assert [line for _, line in graph.locations[edge]] == [1, 2]
+
+
+def test_locations_do_not_take_part_in_equality(tree):
+    d = tree({"pkg/__init__.py": "", "pkg/m.py": "import pkg.b", "pkg/b.py": ""})
+    graph = build_graph(d)
+    assert graph.locations
+    assert graph == build_graph(d)
+    assert graph == Graph(graph.nodes, graph.edges)
 
 
 def test_an_attribute_import_of_the_own_package_is_not_an_edge(tree):

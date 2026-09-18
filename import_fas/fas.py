@@ -7,9 +7,12 @@ import clingo
 from .graph import Edge, Graph
 
 #: Drop as few edges as possible to make the graph acyclic. #edge is clingo's acyclicity
-#: propagator: it rejects any model whose edges form a cycle.
+#: propagator: it rejects any model whose edges form a cycle. An edge from a package to
+#: one of its own submodules is fixed: the point of the package is to expose the
+#: submodule, so dropping that import is not a real option. A cycle cannot consist of
+#: fixed edges alone, since names strictly lengthen along one, so a model always exists.
 ENCODING = """\
-{ del(X,Y) } :- edge(X,Y).
+{ del(X,Y) } :- edge(X,Y), not fixed(X,Y).
 #edge (X,Y) : edge(X,Y), not del(X,Y).
 #minimize { 1,X,Y : del(X,Y) }.
 #show del/2.
@@ -21,11 +24,13 @@ def minimum_feedback_arc_set(graph: Graph) -> list[Edge]:
     if not graph.edges:
         return []
     ctl = clingo.Control(["--opt-strategy=usc"])
-    ctl.add(
-        "base",
-        [],
-        ENCODING + "".join(f"edge({src},{dst})." for src, dst in graph.edges),
+    facts = "".join(f"edge({src},{dst})." for src, dst in graph.edges)
+    facts += "".join(
+        f"fixed({src},{dst})."
+        for src, dst in graph.edges
+        if graph.nodes[dst].startswith(f"{graph.nodes[src]}.")
     )
+    ctl.add("base", [], ENCODING + facts)
     ctl.ground([("base", [])])
     fas: list[Edge] = []
     with ctl.solve(yield_=True) as handle:

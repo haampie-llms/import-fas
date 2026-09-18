@@ -11,14 +11,20 @@ from importlib.util import resolve_name
 
 #: an edge as a pair of indices into :attr:`Graph.nodes`
 Edge = tuple[int, int]
+#: where an import statement is: absolute file path and 1-based line number
+Location = tuple[str, int]
 
 
 @dataclasses.dataclass
 class Graph:
-    """A module import graph: sorted module names, and edges as index pairs into them."""
+    """A module import graph: sorted module names, edges as index pairs into them, and per
+    edge the import statements behind it, which a graph read from a file does not have."""
 
     nodes: list[str]
     edges: list[Edge]
+    locations: dict[Edge, list[Location]] = dataclasses.field(
+        default_factory=dict, compare=False
+    )
 
     def names(self, edges: Iterable[Edge]) -> list[tuple[str, str]]:
         """The given edges as pairs of module names."""
@@ -59,20 +65,22 @@ class ImportVisitor(ast.NodeVisitor):
     def __init__(
         self, resolve: Callable[[str, str], str], current_pkg: str, inline: bool
     ):
-        self.imported: set[str] = set()
+        self.imported: dict[str, set[int]] = {}
         self.resolve = resolve
         self.current_pkg = current_pkg
         self.inline = inline
 
     def visit_Import(self, node: ast.Import) -> None:
         # import statements are always absolute
-        self.imported.update(alias.name for alias in node.names)
+        for alias in node.names:
+            self.imported.setdefault(alias.name, set()).add(node.lineno)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         # import from can be relative or absolute, and the alias can be a submodule or attribute
         module = resolve_name("." * node.level + (node.module or ""), self.current_pkg)
         for alias in node.names:
-            self.imported.add(self.resolve(module, alias.name))
+            name = self.resolve(module, alias.name)
+            self.imported.setdefault(name, set()).add(node.lineno)
 
     def visit_If(self, node: ast.If) -> None:
         # the body of if TYPE_CHECKING and of if __name__ == "__main__" does not run on
@@ -136,7 +144,7 @@ def build_graph(
 
     stack = [package_dir]
     modules: set[str] = set()
-    edges: set[tuple[str, str]] = set()
+    edges: dict[tuple[str, str], list[Location]] = {}
 
     while stack:
         sub_pkg_dir = stack.pop()
@@ -161,33 +169,14 @@ def build_graph(
                     # bytes, so that ast honors a PEP 263 coding cookie
                     with open(entry.path, "rb") as f:
                         visitor.visit(ast.parse(f.read(), filename=entry.path))
-                    # a self-loop is a cycle no reshuffling of imports can break
-                    edges.update(
-                        (current, m)
-                        for m in visitor.imported
-                        if m != current and keep(m)
-                    )
+                    for m, lines in visitor.imported.items():
+                        # a self-loop is a cycle no reshuffling of imports can break
+                        if m != current and keep(m):
+                            edges.setdefault((current, m), []).extend(
+                                (entry.path, line) for line in sorted(lines)
+                            )
 
-    adjacency: dict[str, set[str]] = {module: set() for module in modules}
-    for src, dst in edges:
-        adjacency.setdefault(dst, set())
-        adjacency[src].add(dst)
-
-    # a package inherits the imports of the submodules it re-exports: x -> x.y -> foo adds x -> foo
-    reachable = {}
-    for src, dsts in adjacency.items():
-        seen = set(dsts)
-        todo = [dst for dst in dsts if dst.startswith(f"{src}.")]
-        while todo:
-            # not src itself: a child importing its parent is a cycle, not a self-import
-            new_edges = adjacency[todo.pop()] - seen - {src}
-            seen |= new_edges
-            todo += [dst for dst in new_edges if dst.startswith(f"{src}.")]
-        reachable[src] = seen
-
-    nodes = sorted(reachable)
+    nodes = sorted(modules | {dst for _, dst in edges})
     index = {node: i for i, node in enumerate(nodes)}
-    edge_list = sorted(
-        (index[src], index[dst]) for src, dsts in reachable.items() for dst in dsts
-    )
-    return Graph(nodes, edge_list)
+    locations = {(index[src], index[dst]): where for (src, dst), where in edges.items()}
+    return Graph(nodes, sorted(locations), locations)

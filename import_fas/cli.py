@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 
 from .fas import minimum_feedback_arc_set
 from .graph import Edge, Graph, build_graph
@@ -26,45 +26,49 @@ def plural(n: int, word: str) -> str:
     return word if n == 1 else f"{word}s"
 
 
-def print_edges(graph: Graph, fas: Iterable[Edge], *codes: str) -> None:
-    grouped: dict[str, list[str]] = {}
-    for src, dst in graph.names(fas):
-        grouped.setdefault(src, []).append(dst)
-    for src in sorted(grouped):
-        targets = ", ".join(sorted(grouped[src]))
-        print(colorize(f"{src.replace('.', '/')} imports: {targets}", *codes))
+def display(path: str) -> str:
+    """A path relative to the working directory when that is inside it, else as is."""
+    try:
+        relative = os.path.relpath(path)
+    except ValueError:  # another drive on Windows
+        return path
+    return path if relative.startswith("..") else relative
 
 
-def print_solution(graph: Graph, fas: Sequence[Edge]) -> None:
-    header = (
-        "\nAll import cycles are broken by removing the following import statements:"
-    )
-    print(colorize(header, GREY))
-    print("---")
-    print_edges(graph, fas, GREY)
-    print("---")
+def lines(graph: Graph, edges: Iterable[Edge]) -> list[str]:
+    """One ``path:line: imports module`` line per import statement behind the given edges,
+    in file order; ``module: imports module`` for a graph that has no locations."""
+    keyed: list[tuple[tuple[str, int, str], str]] = []
+    for edge in edges:
+        src, dst = graph.names([edge])[0]
+        where = graph.locations.get(edge)
+        if not where:
+            keyed.append(((src, 0, dst), f"{src}: imports {dst}"))
+        for path, line in where or ():
+            shown = display(path)
+            keyed.append(((shown, line, dst), f"{shown}:{line}: imports {dst}"))
+    return [text for _, text in sorted(keyed)]
+
+
+def print_lines(graph: Graph, edges: Iterable[Edge], *codes: str) -> None:
+    for line in lines(graph, edges):
+        print(colorize(line, *codes))
 
 
 def compare(old: Graph, new: Graph) -> int:
-    """Print how the number of problematic imports changed, and blame the new ones."""
+    """Print the import statements this change added to the solution, and the count."""
     old_fas = minimum_feedback_arc_set(old)
     new_fas = minimum_feedback_arc_set(new)
     before, after = len(old_fas), len(new_fas)
     difference = after - before
 
-    count = "The overall number of problematic import statements"
-    if difference == 0:
-        summary = f"{count} stayed the same: {after}"
-    elif difference < 0:
-        summary = f"{count} decreased by {-difference} from {before} to {after}"
-    else:
-        summary = f"{count} increased by {difference} from {before} to {after}"
-    print(colorize(summary, RED if difference > 0 else GREEN, BOLD), end=".")
-
     if difference <= 0:
-        print()
-        if after:
-            print_solution(new, new_fas)
+        print_lines(new, new_fas, GREY)
+        if difference == 0:
+            summary = f"imports to remove unchanged at {after}"
+        else:
+            summary = f"imports to remove decreased from {before} to {after}"
+        print(colorize(summary, GREEN, BOLD))
         return 0
 
     # Solve the new graph again without the edges the old solution already blamed, so what is
@@ -72,26 +76,15 @@ def compare(old: Graph, new: Graph) -> int:
     # necessarily a subset of the new graph's edges.
     excluded = set(new.indices(old.names(old_fas)))
     blamed = minimum_feedback_arc_set(
-        Graph(new.nodes, [e for e in new.edges if e not in excluded])
+        Graph(new.nodes, [e for e in new.edges if e not in excluded], new.locations)
     )
-    statements = plural(len(blamed), "statement")
-    print(
-        f" This is likely a direct consequence of the following import {statements}:\n"
-    )
-    print_edges(new, blamed, RED)
+    print_lines(new, blamed, RED)
 
     # Breaking exactly those is not necessarily the cheapest way back to the old count.
     if len(blamed) > difference:
-        print(
-            f"\nHowever, instead of removing {len(blamed)} import {statements}, it is "
-            f"sufficient to remove only {difference} import "
-            f"{plural(difference, 'statement')} from the following list:\n"
-        )
-        print("---")
-        print_edges(new, new_fas)
-        print("---")
-    else:
-        print_solution(new, new_fas)
+        print(f"removing any {difference} of the following would undo the increase:")
+        print_lines(new, new_fas, GREY)
+    print(colorize(f"imports to remove increased from {before} to {after}", RED, BOLD))
     return 1
 
 
@@ -161,9 +154,8 @@ def main() -> int:
         if args.command == "solve":
             graph = load(args.package, args.exclude, args.inline, parser)
             fas = minimum_feedback_arc_set(graph)
-            print(f"{len(fas)} problematic import {plural(len(fas), 'statement')}")
-            if fas:
-                print_solution(graph, fas)
+            print_lines(graph, fas, GREY)
+            print(colorize(f"{len(fas)} {plural(len(fas), 'import')} to remove", BOLD))
             return 0
 
         old = load(args.old, args.exclude, args.inline, parser)

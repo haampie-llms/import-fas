@@ -1,4 +1,5 @@
 import json
+import re
 import sys
 
 import pytest
@@ -41,7 +42,9 @@ def test_a_dumped_graph_can_be_read_back(tree, run, tmp_path, capsys):
     assert run("graph", tree(CYCLE), "-o", str(out)) == 0
     capsys.readouterr()
     assert run("solve", str(out)) == 0
-    assert capsys.readouterr().out.startswith("1 problematic import statement\n")
+    lines = capsys.readouterr().out.splitlines()
+    assert re.fullmatch(r"pkg\.[ab]: imports pkg\.[ab]", lines[0])
+    assert lines[-1] == "1 import to remove"
 
 
 def test_extraction_flags_do_not_apply_to_a_graph_file(tree, run, tmp_path):
@@ -54,9 +57,31 @@ def test_extraction_flags_do_not_apply_to_a_graph_file(tree, run, tmp_path):
 
 def test_solve(tree, run, capsys):
     assert run("solve", tree(CYCLE)) == 0
-    out = capsys.readouterr().out
-    assert out.startswith("1 problematic import statement\n")
-    assert "imports: pkg." in out
+    lines = capsys.readouterr().out.splitlines()
+    assert re.search(r"pkg/[ab]\.py:1: imports pkg\.[ab]$", lines[0])
+    assert lines[-1] == "1 import to remove"
+
+
+def test_every_statement_behind_an_edge_is_listed(tree, run, capsys):
+    """a -> b is on both cycles, so it is the unique answer, and it has two statements."""
+    d = tree(
+        {
+            "pkg/__init__.py": "",
+            "pkg/a.py": "import pkg.b\nfrom pkg import b\n",
+            "pkg/b.py": "import pkg.a\nimport pkg.c\n",
+            "pkg/c.py": "import pkg.a",
+        }
+    )
+    assert run("solve", d) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].endswith("pkg/a.py:1: imports pkg.b")
+    assert lines[1].endswith("pkg/a.py:2: imports pkg.b")
+    assert lines[2] == "1 import to remove"
+
+
+def test_no_cycles(tree, run, capsys):
+    assert run("solve", tree({"pkg/__init__.py": "", "pkg/a.py": "import pkg"})) == 0
+    assert capsys.readouterr().out == "0 imports to remove\n"
 
 
 def test_a_syntax_error_in_the_package(tree, run, capsys):
@@ -67,7 +92,9 @@ def test_a_syntax_error_in_the_package(tree, run, capsys):
 def test_compare_unchanged(tree, run, capsys):
     d = tree(CYCLE)
     assert run("compare", d, d) == 0
-    assert "stayed the same: 1" in capsys.readouterr().out
+    assert (
+        capsys.readouterr().out.splitlines()[-1] == "imports to remove unchanged at 1"
+    )
 
 
 def test_compare_improved(tmp_path, run, capsys):
@@ -86,7 +113,7 @@ def test_compare_improved(tmp_path, run, capsys):
         run("compare", str(tmp_path / "old" / "pkg"), str(tmp_path / "new" / "pkg"))
         == 0
     )
-    assert "decreased by 1 from 1 to 0" in capsys.readouterr().out
+    assert capsys.readouterr().out == "imports to remove decreased from 1 to 0\n"
 
 
 def test_compare_worse(tmp_path, run, capsys):
@@ -105,9 +132,9 @@ def test_compare_worse(tmp_path, run, capsys):
         run("compare", str(tmp_path / "old" / "pkg"), str(tmp_path / "new" / "pkg"))
         == 1
     )
-    out = capsys.readouterr().out
-    assert "increased by 1 from 0 to 1" in out
-    assert "This is likely a direct consequence" in out
+    lines = capsys.readouterr().out.splitlines()
+    assert re.search(r"new/pkg/[ab]\.py:1: imports pkg\.[ab]$", lines[0])
+    assert lines[-1] == "imports to remove increased from 0 to 1"
 
 
 def test_compare_when_a_blamed_edge_is_gone(tmp_path, run, capsys):
@@ -129,7 +156,9 @@ def test_compare_when_a_blamed_edge_is_gone(tmp_path, run, capsys):
         run("compare", str(tmp_path / "old" / "pkg"), str(tmp_path / "new" / "pkg"))
         == 0
     )
-    assert "stayed the same: 1" in capsys.readouterr().out
+    assert (
+        capsys.readouterr().out.splitlines()[-1] == "imports to remove unchanged at 1"
+    )
 
 
 @pytest.mark.parametrize(
