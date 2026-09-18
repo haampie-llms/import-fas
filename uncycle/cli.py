@@ -73,7 +73,8 @@ def compare(old: Graph, new: Graph) -> int:
     difference = after - before
 
     if difference <= 0:
-        print_lines(new, new_fas, GREY)
+        # Nothing to blame. Listing the new solution would mislead: it is one of many
+        # optimal ones, and mostly names statements this change did not touch.
         if difference == 0:
             change = f"dependencies to remove unchanged at {after}"
         else:

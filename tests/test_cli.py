@@ -93,12 +93,34 @@ def test_a_syntax_error_in_the_package(tree, run, capsys):
 
 
 def test_compare_unchanged(tree, run, capsys):
+    """Only the count: the current solution is arbitrary and blames nothing new."""
     d = tree(CYCLE)
     assert run(d, "--baseline", d) == 0
+    assert capsys.readouterr().out == "dependencies to remove unchanged at 1\n"
+
+
+def test_compare_improved_with_cycles_left(tmp_path, run, capsys):
+    """Statements that still have to go are not listed as if the change added them."""
+    for name, source in {
+        "old/pkg/__init__.py": "",
+        "old/pkg/a.py": "import pkg.b",
+        "old/pkg/b.py": "import pkg.a",
+        "old/pkg/c.py": "import pkg.d",
+        "old/pkg/d.py": "import pkg.c",
+        "new/pkg/__init__.py": "",
+        "new/pkg/a.py": "import pkg.b",
+        "new/pkg/b.py": "",
+        "new/pkg/c.py": "import pkg.d",
+        "new/pkg/d.py": "import pkg.c",
+    }.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source)
     assert (
-        capsys.readouterr().out.splitlines()[-1]
-        == "dependencies to remove unchanged at 1"
+        run(str(tmp_path / "new" / "pkg"), "--baseline", str(tmp_path / "old" / "pkg"))
+        == 0
     )
+    assert capsys.readouterr().out == "dependencies to remove decreased from 2 to 1\n"
 
 
 def test_compare_improved(tmp_path, run, capsys):
