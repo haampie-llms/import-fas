@@ -1,7 +1,7 @@
 import graphlib
 import random
 
-from import_fas import Graph, build_graph, minimum_feedback_arc_set
+from uncycle import Graph, build_graph, minimum_feedback_arc_set
 
 
 def is_acyclic(graph, removed=()):

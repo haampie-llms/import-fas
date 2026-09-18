@@ -4,7 +4,7 @@ import sys
 
 import pytest
 
-from import_fas import cli
+from uncycle import cli
 
 CYCLE = {
     "pkg/__init__.py": "",
@@ -16,8 +16,11 @@ CYCLE = {
 
 @pytest.fixture
 def run(monkeypatch):
+    """Run the command line with plain output, even on GitHub Actions."""
+    monkeypatch.setenv("NO_COLOR", "1")
+
     def go(*argv):
-        monkeypatch.setattr(sys, "argv", ["import-fas", *argv])
+        monkeypatch.setattr(sys, "argv", ["uncycle", *argv])
         return cli.main()
 
     return go

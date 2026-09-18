@@ -112,7 +112,7 @@ def load(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="import-fas", description=__doc__)
+    parser = argparse.ArgumentParser(prog="uncycle", description=__doc__)
     parser.add_argument(
         "package",
         metavar="PACKAGE",
@@ -170,5 +170,5 @@ def main() -> int:
         print(colorize(summary(graph, fas), BOLD))
         return 0
     except (OSError, SyntaxError, ValueError) as e:
-        print(f"import-fas: {e}", file=sys.stderr)
+        print(f"uncycle: {e}", file=sys.stderr)
         return 2

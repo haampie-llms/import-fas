@@ -3,7 +3,7 @@ import pathlib
 
 import pytest
 
-from import_fas import Graph, build_graph
+from uncycle import Graph, build_graph
 
 
 def edges(graph):

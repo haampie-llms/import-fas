@@ -1,8 +1,8 @@
-# import-fas
+# uncycle
 
 A Python tool to find the least number of `import` statements to break all circular imports.
 
-![A five-module import graph with two cycles; one edge, shown dashed, breaks both](https://raw.githubusercontent.com/haampie-llms/import-fas/main/docs/feedback-arc-set.svg)
+![A five-module import graph with two cycles; one edge, shown dashed, breaks both](https://raw.githubusercontent.com/haampie/uncycle/main/docs/feedback-arc-set.svg)
 
 It gives you short and actionable feedback to structure your Python package better.
 
@@ -11,15 +11,15 @@ It works by computing the so-called [Feedback Arc Set][1] on the graph of Python
 ## Usage
 
 ```
-import-fas [--exclude REGEX] [--inline] [--baseline OLD] [--dump-graph FILE] PACKAGE
+uncycle [--exclude REGEX] [--inline] [--baseline OLD] [--dump-graph FILE] PACKAGE
 ```
 
 ### Listing problematic import statements
 
-Use `import-fas path/to/pkg` to list the minimal import statements to delete to break all circular imports:
+Use `uncycle path/to/pkg` to list the minimal import statements to delete to break all circular imports:
 
 ```console
-$ import-fas werkzeug-3.1.8/src/werkzeug
+$ uncycle werkzeug-3.1.8/src/werkzeug
 werkzeug-3.1.8/src/werkzeug/http.py:1442: imports werkzeug.datastructures
 werkzeug-3.1.8/src/werkzeug/http.py:1443: imports werkzeug.sansio.http
 2 dependencies to remove
@@ -30,7 +30,7 @@ werkzeug-3.1.8/src/werkzeug/http.py:1443: imports werkzeug.sansio.http
 Use `--baseline` to see whether a new commit or version regresses the number of dependencies to remove:
 
 ```console
-$ import-fas Werkzeug-2.2.0/src/werkzeug --baseline Werkzeug-2.1.2/src/werkzeug
+$ uncycle Werkzeug-2.2.0/src/werkzeug --baseline Werkzeug-2.1.2/src/werkzeug
 Werkzeug-2.2.0/src/werkzeug/http.py:1305: imports werkzeug.sansio.http
 dependencies to remove increased from 1 to 2
 ```
@@ -42,14 +42,14 @@ This check is useful in CI:
   with: { ref: "${{ github.event.pull_request.base.sha }}", path: old }
 - uses: actions/checkout@v5
   with: { path: new }
-- run: pip install git+https://github.com/haampie-llms/import-fas
-- run: import-fas new/src/mypkg --baseline old/src/mypkg
+- run: pip install git+https://github.com/haampie/uncycle
+- run: uncycle new/src/mypkg --baseline old/src/mypkg
 ```
 
 ## Install
 
 ```
-pip install git+https://github.com/haampie-llms/import-fas
+pip install git+https://github.com/haampie/uncycle
 ```
 
 ## Options
@@ -69,10 +69,10 @@ pip install git+https://github.com/haampie-llms/import-fas
 ## Python API
 
 ```python
-import import_fas
+import uncycle
 
-graph = import_fas.build_graph("src/app", exclude=r"^app\.tests\b")
-fas = import_fas.minimum_feedback_arc_set(graph)
+graph = uncycle.build_graph("src/app", exclude=r"^app\.tests\b")
+fas = uncycle.minimum_feedback_arc_set(graph)
 print(graph.names(fas))  # [('app.db', 'app.models')]
 ```
 
@@ -88,7 +88,7 @@ Also notice there are typically many optimal solutions, but only one (arbitrary)
 
 ## See also
 
-- pylint's [`cyclic-import`][2], [pycycle][3] and [import-linter][4] report every cycle they find, one chain of modules per cycle. In a package with many cycles that is a long list; `import-fas` reports the few imports that break all of them.
+- pylint's [`cyclic-import`][2], [pycycle][3] and [import-linter][4] report every cycle they find, one chain of modules per cycle. In a package with many cycles that is a long list; `uncycle` reports the few imports that break all of them.
 - The minimum is exact, computed with [clingo](https://potassco.org/clingo/).
 
 [1]: https://en.wikipedia.org/wiki/Feedback_arc_set
