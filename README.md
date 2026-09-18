@@ -35,7 +35,7 @@ werkzeug/http imports: werkzeug.datastructures, werkzeug.sansio.http
 Use `import-fas compare` to see whether a new commit or version regresses the number of problematic import statements:
 
 ```console
-$ import-fas compare before/src/werkzeug after/src/werkzeug
+$ import-fas compare Werkzeug-2.1.2/src/werkzeug Werkzeug-2.2.0/src/werkzeug
 The overall number of problematic import statements increased by 1 from 1 to 2. This is
 likely a direct consequence of the following import statement:
 
