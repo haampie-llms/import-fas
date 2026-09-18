@@ -12,6 +12,7 @@ from .graph import Edge, Graph
 #: submodule, so dropping that import is not a real option. A cycle cannot consist of
 #: fixed edges alone, since names strictly lengthen along one, so a model always exists.
 ENCODING = """\
+#defined fixed/2.
 { del(X,Y) } :- edge(X,Y), not fixed(X,Y).
 #edge (X,Y) : edge(X,Y), not del(X,Y).
 #minimize { 1,X,Y : del(X,Y) }.

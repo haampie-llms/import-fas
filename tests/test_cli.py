@@ -16,6 +16,9 @@ CYCLE = {
 
 @pytest.fixture
 def run(monkeypatch):
+    """Run the command line with plain output, even on GitHub Actions."""
+    monkeypatch.setenv("NO_COLOR", "1")
+
     def go(*argv):
         monkeypatch.setattr(sys, "argv", ["uncycle", *argv])
         return cli.main()
