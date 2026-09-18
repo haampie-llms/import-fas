@@ -1,6 +1,6 @@
 # import-fas
 
-A Python tool to find the least number of `import` statement to remove so that your imports are acyclic.
+A Python tool to find the least number of `import` statements to remove so that your imports are acyclic.
 
 ![A five-module import graph with two cycles; one edge, shown dashed, breaks both](https://raw.githubusercontent.com/haampie-llms/import-fas/main/docs/feedback-arc-set.svg)
 
@@ -16,26 +16,6 @@ import-fas compare [--exclude REGEX] [--inline] OLD NEW
 import-fas graph   [--exclude REGEX] [--inline] [-o FILE] [-f json|text] PACKAGE_DIR_OR_GRAPH
 ```
 
-`solve` builds the import graph of a package from its AST, computes an exact minimum
-feedback arc set with [clingo](https://potassco.org/clingo/), and prints the imports to
-remove. `compare` solves two versions of a package and exits 1 when the new one makes the p. `graph` dumps the graph the solver sees; `solve` and `compare` accept
-such a dump in place of a package directory.
-
-## Install
-
-```
-pip install git+https://github.com/haampie-llms/import-fas
-```
-
-## Options
-
-- `--exclude REGEX`: drop modules whose dotted name matches, by `re.search`. A matching package is pruned with everything under it. Anchor prefixes: `'^app\.(vendor|tests)\b'`.
-- `--inline`: also count imports inside functions and classes.
-- `-o FILE`: output file for `graph`. `-` is stdout and the default.
-- `-f json|text`: output format for `graph`. Defaults to `text` when `-o` ends in `.txt`, otherwise `json`.
-
-## Examples
-
 ```console
 $ pip download --no-deps --no-binary :all: werkzeug==3.1.8 && tar xf werkzeug-3.1.8.tar.gz
 $ import-fas solve werkzeug-3.1.8/src/werkzeug
@@ -46,6 +26,8 @@ All import cycles are broken by removing the following import statements:
 werkzeug/http imports: werkzeug.datastructures, werkzeug.sansio.http
 ---
 ```
+
+`compare` blames the import that made a newer version worse, and exits 1:
 
 ```console
 $ import-fas compare before/src/werkzeug after/src/werkzeug
@@ -66,21 +48,24 @@ The same check on every pull request:
 - run: import-fas compare old/src/mypkg new/src/mypkg
 ```
 
+## Install
+
+```
+pip install git+https://github.com/haampie-llms/import-fas
+```
+
+## Options
+
+- `--exclude REGEX`: drop modules whose dotted name matches, by `re.search`. A matching package is pruned with everything under it. Anchor prefixes: `'^app\.(vendor|tests)\b'`.
+- `--inline`: also count imports inside functions and classes.
+- `-o FILE`: output file for `graph`. `-` is stdout and the default.
+- `-f json|text`: output format for `graph`. Defaults to `text` when `-o` ends in `.txt`, otherwise `json`. `solve` and `compare` accept a dumped graph in place of a package directory.
+
 ## Exit status
 
 - `0`: `solve` or `graph` ran, or `compare` found no increase.
 - `1`: `compare` found an increase.
 - `2`: a file could not be read or parsed, or the arguments were invalid.
-
-## Graph file
-
-```json
-{"nodes": ["pkg", "pkg.a", "pkg.b"], "edges": [[0, 1], [1, 2], [2, 1]]}
-```
-
-An edge `[i, j]` means node `i` imports node `j`. The `text` format is the node count, one
-name per line, the edge count, then one `i j` pair per line. Nodes are sorted by name and
-edges by index, so a dump is reproducible.
 
 ## Python API
 
@@ -111,10 +96,10 @@ print(graph.names(fas))  # [('app.db', 'app.models')]
 
 ## See also
 
-- [clingo](https://potassco.org/clingo/), the answer set solver behind the exact solution.
-- aiohttp's [`test_circular_imports.py`](https://github.com/aio-libs/aiohttp/blob/master/tests/test_circular_imports.py)
-  and pytest's [`test_meta.py`](https://github.com/pytest-dev/pytest/blob/main/testing/test_meta.py)
-  import every submodule in a fresh interpreter and fail when one cannot stand on its own.
-  They catch a cycle when it breaks; `compare` reports it when it is added.
+- pylint's [`cyclic-import`](https://pylint.readthedocs.io/en/stable/user_guide/messages/refactor/cyclic-import.html),
+  [pycycle](https://github.com/bndr/pycycle) and [import-linter](https://github.com/seddonym/import-linter)
+  report every cycle they find, one chain of modules per cycle. In a package with many
+  cycles that is a long list; `import-fas` reports the few imports that break all of them.
+- The minimum is exact, computed with [clingo](https://potassco.org/clingo/).
 
 [1]: https://en.wikipedia.org/wiki/Feedback_arc_set
