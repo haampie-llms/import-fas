@@ -139,8 +139,9 @@ def test_the_names_a_package_binds_are_its_attributes(tree, binding):
 )
 def test_the_names_a_package_does_not_bind_are_unseen_submodules(tree, binding):
     d = tree({"pkg/__init__.py": binding, "pkg/m.py": "from pkg import solve"})
-    assert ("pkg.m", "pkg.solve") in edges(build_graph(d))
-    assert ("pkg.m", "pkg") not in edges(build_graph(d))
+    found = edges(build_graph(d))
+    assert ("pkg.m", "pkg.solve") in found
+    assert ("pkg.m", "pkg") not in found
 
 
 def test_a_star_import_of_an_unseen_module_can_bind_any_public_name(tree):
@@ -199,6 +200,25 @@ def test_circular_star_imports_terminate(tree):
 def test_dunders_are_attributes_of_every_module(tree):
     d = tree({"pkg/__init__.py": "", "pkg/m.py": "from pkg import __file__"})
     assert edges(build_graph(d)) == {("pkg.m", "pkg")}
+
+
+def test_a_module_level_getattr_can_bind_any_public_name(tree):
+    """PEP 562 lazy loaders and deprecation shims: the package may serve any public name,
+    but a private one is still taken to be a submodule the tree cannot see."""
+    d = tree(
+        {
+            "pkg/__init__.py": "def __getattr__(name): ...",
+            "pkg/m.py": "from pkg import lazy\nfrom pkg import _ext",
+            "pkg/sub/__init__.py": "from .. import *",
+            "pkg/sub/n.py": "from pkg.sub import lazy",
+        }
+    )
+    assert edges(build_graph(d)) == {
+        ("pkg.m", "pkg"),
+        ("pkg.m", "pkg._ext"),
+        ("pkg.sub", "pkg"),
+        ("pkg.sub.n", "pkg.sub"),
+    }
 
 
 def test_from_module_import_star(tree):
