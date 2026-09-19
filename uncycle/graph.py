@@ -7,7 +7,7 @@ import dataclasses
 import os
 import re
 import warnings
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from importlib.util import resolve_name
 
 #: an edge as a pair of indices into :attr:`Graph.nodes`
@@ -63,34 +63,102 @@ def _runs_on_import(test: ast.expr) -> bool:
 
 
 _SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+#: in a namespace: any public name may be there, see :func:`build_graph`
+_ANY = "*"
 
 
-def collect_imports(
-    tree: ast.AST,
-    resolve: Callable[[str, str], str],
-    current_pkg: str,
-    inline: bool,
-    warn: Callable[[str], None],
-    path: str,
-) -> dict[str, set[int]]:
-    """The modules a module imports, each with the lines of the statements that do so.
-
-    Iterative rather than a NodeVisitor, since a generated file with a very long
-    expression nests deeper than the recursion limit."""
-    imported: dict[str, set[int]] = {}
-    stack: list[ast.AST] = [tree]
+def _statements(tree: ast.AST, inline: bool) -> Iterator[tuple[ast.AST, bool]]:
+    """The statements that run when the module is imported, and whether each is at module
+    level rather than in a function or class body. Iterative rather than a NodeVisitor, since
+    a generated file with a very long expression nests deeper than the recursion limit;
+    expressions are never entered at all."""
+    stack: list[tuple[ast.AST, bool]] = [(tree, True)]
     while stack:
-        node = stack.pop()
+        node, top = stack.pop()
+        yield node, top
+        if isinstance(node, _SCOPES):
+            if inline:
+                stack.extend((child, False) for child in node.body)
+        elif isinstance(node, ast.If) and not _runs_on_import(node.test):
+            # the body of if TYPE_CHECKING and of if __name__ == "__main__" does not run
+            # on import, but the else branch of either does
+            stack.extend((child, top) for child in node.orelse)
+        else:
+            for field in ("body", "orelse", "finalbody", "handlers", "cases"):
+                stack.extend((child, top) for child in getattr(node, field, ()))
+
+
+def _stored(target: ast.expr) -> Iterator[str]:
+    """The names an assignment target binds: ``a`` and ``b`` in ``a, (b, c.d) = ...``."""
+    for node in ast.walk(target):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            yield node.id
+
+
+def _bound(node: ast.AST) -> Iterator[str]:
+    """The names a statement binds in the module namespace, except by ``from`` imports."""
+    if isinstance(node, _SCOPES):
+        yield node.name
+    elif isinstance(node, ast.Import):
+        for alias in node.names:
+            yield alias.asname or alias.name.partition(".")[0]
+    elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        for target in targets:
+            yield from _stored(target)
+        # what a literal __all__ lists exists, however it got there
+        if isinstance(node.value, (ast.List, ast.Tuple)) and any(
+            isinstance(t, ast.Name) and t.id == "__all__" for t in targets
+        ):
+            for elt in node.value.elts:
+                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                    yield elt.value
+    elif isinstance(node, (ast.For, ast.AsyncFor)):
+        yield from _stored(node.target)
+    elif isinstance(node, (ast.With, ast.AsyncWith)):
+        for item in node.items:
+            if item.optional_vars is not None:
+                yield from _stored(item.optional_vars)
+    elif isinstance(node, ast.ExceptHandler) and node.name:
+        yield node.name
+
+
+@dataclasses.dataclass
+class _Module:
+    """What one source file tells us."""
+
+    path: str
+    is_package: bool
+    #: the imports that run: ``("a.b", None, line)`` for ``import a.b`` and
+    #: ``("a", "b", line)`` for ``from a import b``
+    imports: list[tuple[str, str | None, int]] = dataclasses.field(default_factory=list)
+    #: names bound at module level, so attributes the module has once it has run
+    bound: set[str] = dataclasses.field(default_factory=set)
+    #: modules star-imported at module level
+    stars: list[str] = dataclasses.field(default_factory=list)
+
+
+def scan_module(
+    path: str, name: str, is_package: bool, inline: bool, warn: Callable[[str], None]
+) -> _Module:
+    """Parse one source file for its imports and the names it binds."""
+    # bytes, so that ast honors a PEP 263 coding cookie
+    with open(path, "rb") as f:
+        tree = ast.parse(f.read(), filename=path)
+    module = _Module(path, is_package)
+    package = name if is_package else name.rpartition(".")[0]
+
+    for node, top in _statements(tree, inline):
+        if top:
+            module.bound.update(_bound(node))
         if isinstance(node, ast.Import):
             # import statements are always absolute
             for alias in node.names:
-                imported.setdefault(alias.name, set()).add(node.lineno)
+                module.imports.append((alias.name, None, node.lineno))
         elif isinstance(node, ast.ImportFrom):
             # from imports can be relative, and the alias can be a submodule or attribute
             try:
-                module = resolve_name(
-                    "." * node.level + (node.module or ""), current_pkg
-                )
+                src = resolve_name("." * node.level + (node.module or ""), package)
             except ImportError:
                 # such a statement fails at runtime too; it is in a template or dead code
                 warn(
@@ -98,28 +166,16 @@ def collect_imports(
                 )
                 continue
             for alias in node.names:
-                imported.setdefault(resolve(module, alias.name), set()).add(node.lineno)
-        elif isinstance(node, ast.If) and not _runs_on_import(node.test):
-            # the body of if TYPE_CHECKING and of if __name__ == "__main__" does not run
-            # on import, but the else branch of either does
-            stack.extend(node.orelse)
-        elif isinstance(node, _SCOPES) and not inline:
-            continue
-        else:
-            stack.extend(ast.iter_child_nodes(node))
-    return imported
-
-
-def _is_package_dir(entry: os.DirEntry[str]) -> bool:
-    return (
-        entry.name.isidentifier()
-        and entry.is_dir(follow_symlinks=False)
-        and os.path.isfile(os.path.join(entry.path, "__init__.py"))
-    )
-
-
-def _is_module_file(entry: os.DirEntry[str]) -> bool:
-    return entry.is_file(follow_symlinks=False) and entry.name.endswith(".py")
+                module.imports.append((src, alias.name, node.lineno))
+                if not top:
+                    continue
+                if alias.name == "*":
+                    module.stars.append(src)
+                # from . import x in a package's __init__ names the submodule x, not an
+                # attribute the package defines
+                elif alias.asname or src != name:
+                    module.bound.add(alias.asname or alias.name)
+    return module
 
 
 def build_graph(
@@ -138,82 +194,82 @@ def build_graph(
     if not os.path.isfile(os.path.join(package_dir, "__init__.py")):
         raise ValueError(f"{package_dir}: not a package, it has no __init__.py")
 
-    cache: dict[tuple[str, str], str] = {}
-    listings: dict[str, frozenset[str]] = {}
+    excluded = re.compile(exclude).search if exclude else lambda _: None
 
-    def listing(directory: str) -> frozenset[str]:
-        if directory not in listings:
-            try:
-                listings[directory] = frozenset(os.listdir(directory))
-            except OSError:
-                listings[directory] = frozenset()
-        return listings[directory]
+    modules: dict[str, _Module] = {}
+    for dirpath, dirnames, filenames in os.walk(package_dir):
+        subpkg = os.path.relpath(dirpath, root).replace(os.sep, ".")
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d.isidentifier()
+            and os.path.isfile(os.path.join(dirpath, d, "__init__.py"))
+            and not excluded(f"{subpkg}.{d}")
+        ]
+        for filename in filenames:
+            stem, ext = os.path.splitext(filename)
+            is_package = stem == "__init__"
+            name = subpkg if is_package else f"{subpkg}.{stem}"
+            if ext == ".py" and not excluded(name):
+                path = os.path.join(dirpath, filename)
+                modules[name] = scan_module(path, name, is_package, inline, warn)
 
-    def exists(parts: list[str], leaf: str) -> bool:
-        """Whether ``root/parts.../leaf`` exists, spelled exactly so. Unlike ``os.path``,
-        this does not match ``Config`` to ``config.py`` on a case-insensitive filesystem."""
-        directory = root
-        for part in parts:
-            if part not in listing(directory):
-                return False
-            directory = os.path.join(directory, part)
-        return leaf in listing(directory)
+    namespaces: dict[str, set[str]] = {}
 
-    def resolve(module: str, attr: str) -> str:
-        """``from foo import bar`` is ``foo.bar`` when bar is a submodule, else ``foo``."""
-        key = (module, attr)
-        if key not in cache:
-            parts = module.split(".")
-            is_module = exists(parts, f"{attr}.py") or exists(
-                [*parts, attr], "__init__.py"
-            )
-            cache[key] = f"{module}.{attr}" if is_module else module
-        return cache[key]
+    def namespace(name: str) -> set[str]:
+        """The attributes a module has once it has run, as far as the tree shows. It holds
+        ``_ANY`` if any public name may be there: the module star-imports a module the tree
+        cannot see, or defines a module-level ``__getattr__``. That marker is passed on by
+        star imports of this module like any other public name."""
+        if name not in namespaces:
+            # registered before it is filled: star imports can be circular
+            namespaces[name] = names = set()
+            names |= modules[name].bound
+            if "__getattr__" in names:
+                names.add(_ANY)
+            for star in modules[name].stars:
+                if star in modules:
+                    # what a star import brings in, taking __all__ to be absent
+                    names |= {n for n in namespace(star) if not n.startswith("_")}
+                else:
+                    names.add(_ANY)
+        return namespaces[name]
+
+    def target(module: str, attr: str | None) -> str:
+        """The module that ``from module import attr`` runs, or ``module`` for ``import``."""
+        if attr is None or attr == "*":
+            return module
+        submodule = f"{module}.{attr}"
+        if submodule in modules:
+            return submodule
+        if module in modules and modules[module].is_package:
+            if attr.startswith("__") and attr.endswith("__"):
+                return module  # __file__ and friends: every module has them
+            names = namespace(module)
+            if attr in names or (_ANY in names and not attr.startswith("_")):
+                return module
+            # a submodule the tree does not have, typically a compiled one: a leaf
+            return submodule
+        return module
 
     inside = re.compile(rf"{re.escape(pkg)}(\.|$)").match
-    excluded = re.compile(exclude).search if exclude else lambda _: False
 
     def keep(module: str) -> bool:
         """The graph holds this package's own modules, minus the excluded ones."""
         return bool(inside(module)) and not excluded(module)
 
-    stack = [package_dir]
-    modules: set[str] = set()
-    edges: dict[tuple[str, str], list[Location]] = {}
+    lines: dict[tuple[str, str], set[int]] = {}
+    for name, module in modules.items():
+        for imported, attr, line in module.imports:
+            dst = target(imported, attr)
+            # a self-loop is a cycle no reshuffling of imports can break
+            if dst != name and keep(dst):
+                lines.setdefault((name, dst), set()).add(line)
 
-    while stack:
-        sub_pkg_dir = stack.pop()
-        subpkg = os.path.relpath(sub_pkg_dir, root).replace(os.sep, ".")
-
-        if not keep(subpkg):
-            continue
-
-        with os.scandir(sub_pkg_dir) as it:
-            for entry in it:
-                if _is_package_dir(entry):
-                    stack.append(entry.path)
-                elif _is_module_file(entry):
-                    if entry.name == "__init__.py":
-                        current = subpkg
-                    else:
-                        current = f"{subpkg}.{entry.name[:-3]}"
-                    if not keep(current):
-                        continue
-                    modules.add(current)
-                    # bytes, so that ast honors a PEP 263 coding cookie
-                    with open(entry.path, "rb") as f:
-                        tree = ast.parse(f.read(), filename=entry.path)
-                    imported = collect_imports(
-                        tree, resolve, subpkg, inline, warn, entry.path
-                    )
-                    for m, lines in imported.items():
-                        # a self-loop is a cycle no reshuffling of imports can break
-                        if m != current and keep(m):
-                            edges.setdefault((current, m), []).extend(
-                                (entry.path, line) for line in sorted(lines)
-                            )
-
-    nodes = sorted(modules | {dst for _, dst in edges})
+    nodes = sorted(set(modules) | {dst for _, dst in lines})
     index = {node: i for i, node in enumerate(nodes)}
-    locations = {(index[src], index[dst]): where for (src, dst), where in edges.items()}
+    locations = {
+        (index[src], index[dst]): [(modules[src].path, line) for line in sorted(where)]
+        for (src, dst), where in lines.items()
+    }
     return Graph(nodes, sorted(locations), locations)

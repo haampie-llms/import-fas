@@ -59,11 +59,166 @@ def test_from_subpackage_import_attribute(tree):
     d = tree(
         {
             "pkg/__init__.py": "",
-            "pkg/sub/__init__.py": "",
+            "pkg/sub/__init__.py": "def thing(): pass",
             "pkg/m.py": "from .sub import thing",
         }
     )
     assert edges(build_graph(d)) == {("pkg.m", "pkg.sub")}
+
+
+def test_from_package_import_a_module_the_tree_does_not_have(tree):
+    """``_foo`` is neither a source file nor a name pkg/__init__.py binds, so it is a module
+    the tree cannot see, typically a compiled one, and not a dependency on the package."""
+    d = tree(
+        {
+            "pkg/__init__.py": "from ._basic import *\nfrom . import _foo",
+            "pkg/_basic.py": "from . import _foo\nfrom pkg import _foo as impl",
+            "pkg/m.py": "from pkg import _foo\nimport pkg._foo",
+        }
+    )
+    graph = build_graph(d)
+    assert graph.nodes == ["pkg", "pkg._basic", "pkg._foo", "pkg.m"]
+    assert edges(graph) == {
+        ("pkg", "pkg._basic"),
+        ("pkg", "pkg._foo"),
+        ("pkg._basic", "pkg._foo"),
+        ("pkg.m", "pkg._foo"),
+    }
+
+
+def test_from_plain_module_import_anything_is_an_attribute(tree):
+    """Only packages have submodules, so a name a plain module does not visibly bind is
+    still an attribute of it."""
+    d = tree(
+        {
+            "pkg/__init__.py": "",
+            "pkg/impl.py": "globals()['x'] = 1",
+            "pkg/m.py": "from .impl import x",
+        }
+    )
+    assert edges(build_graph(d)) == {("pkg.m", "pkg.impl")}
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        "solve = 1",
+        "solve: int = 1",
+        "solve += 1",
+        "solve, (other, *rest) = 1, (2, 3)",
+        "def solve(): pass",
+        "async def solve(): pass",
+        "class solve: pass",
+        "import solve",
+        "import solve.deep",
+        "import deep as solve",
+        "from other import solve",
+        "from other import x as solve",
+        "for solve in (): pass",
+        "with open('f') as solve: pass",
+        "try:\n    pass\nexcept Exception as solve:\n    pass",
+        "if x:\n    pass\nelse:\n    solve = 1",
+        "while x:\n    solve = 1",
+        "__all__ = ['solve']",
+        "__all__ += ('solve',)",
+    ],
+)
+def test_the_names_a_package_binds_are_its_attributes(tree, binding):
+    d = tree({"pkg/__init__.py": binding, "pkg/m.py": "from pkg import solve"})
+    assert edges(build_graph(d)) == {("pkg.m", "pkg")}
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        "def f():\n    solve = 1",
+        "class C:\n    solve = 1",
+        "if TYPE_CHECKING:\n    solve = 1",
+        "from . import solve",
+    ],
+)
+def test_the_names_a_package_does_not_bind_are_unseen_submodules(tree, binding):
+    d = tree({"pkg/__init__.py": binding, "pkg/m.py": "from pkg import solve"})
+    found = edges(build_graph(d))
+    assert ("pkg.m", "pkg.solve") in found
+    assert ("pkg.m", "pkg") not in found
+
+
+def test_a_star_import_of_an_unseen_module_can_bind_any_public_name(tree):
+    """numpy style: pkg/__init__.py star-imports a compiled module, so any public name may
+    come from it, but a star import never brings in an underscore name."""
+    d = tree(
+        {
+            "pkg/__init__.py": "from ._ufuncs import *",
+            "pkg/m.py": "from pkg import gammaln\nfrom pkg import _specfun",
+            "pkg/sub/__init__.py": "from .. import *",
+            "pkg/sub/n.py": "from pkg.sub import gammaln",
+        }
+    )
+    assert edges(build_graph(d)) == {
+        ("pkg", "pkg._ufuncs"),
+        ("pkg.m", "pkg"),
+        ("pkg.m", "pkg._specfun"),
+        ("pkg.sub", "pkg"),
+        ("pkg.sub.n", "pkg.sub"),
+    }
+
+
+def test_names_from_star_imports_are_attributes_of_the_package(tree):
+    """scipy style: pkg/__init__.py star-imports its implementation modules, and the rest of
+    the world does ``from pkg import solve``, which needs pkg to have run."""
+    d = tree(
+        {
+            "pkg/__init__.py": "from ._basic import *",
+            "pkg/_basic.py": "from ._misc import *\nimport numpy as np\ndef solve(): pass",
+            "pkg/_misc.py": "class LinAlgError(Exception): pass\n_private = 1",
+            "pkg/other/__init__.py": "",
+            "pkg/other/m.py": "from pkg import solve, LinAlgError",
+            "pkg/other/n.py": "from pkg import _private",
+        }
+    )
+    assert edges(build_graph(d)) == {
+        ("pkg", "pkg._basic"),
+        ("pkg._basic", "pkg._misc"),
+        ("pkg.other.m", "pkg"),
+        ("pkg.other.n", "pkg._private"),  # a star import does not bring in _private
+    }
+
+
+def test_circular_star_imports_terminate(tree):
+    d = tree(
+        {
+            "pkg/__init__.py": "from .a import *",
+            "pkg/a.py": "from .b import *\nx = 1",
+            "pkg/b.py": "from .a import *",
+            "pkg/m.py": "from pkg import x",
+        }
+    )
+    assert ("pkg.m", "pkg") in edges(build_graph(d))
+
+
+def test_dunders_are_attributes_of_every_module(tree):
+    d = tree({"pkg/__init__.py": "", "pkg/m.py": "from pkg import __file__"})
+    assert edges(build_graph(d)) == {("pkg.m", "pkg")}
+
+
+def test_a_module_level_getattr_can_bind_any_public_name(tree):
+    """PEP 562 lazy loaders and deprecation shims: the package may serve any public name,
+    but a private one is still taken to be a submodule the tree cannot see."""
+    d = tree(
+        {
+            "pkg/__init__.py": "def __getattr__(name): ...",
+            "pkg/m.py": "from pkg import lazy\nfrom pkg import _ext",
+            "pkg/sub/__init__.py": "from .. import *",
+            "pkg/sub/n.py": "from pkg.sub import lazy",
+        }
+    )
+    assert edges(build_graph(d)) == {
+        ("pkg.m", "pkg"),
+        ("pkg.m", "pkg._ext"),
+        ("pkg.sub", "pkg"),
+        ("pkg.sub.n", "pkg.sub"),
+    }
 
 
 def test_from_module_import_star(tree):
@@ -215,10 +370,11 @@ def test_locations_do_not_take_part_in_equality(tree):
     assert graph == Graph(graph.nodes, graph.edges)
 
 
-def test_an_attribute_import_of_the_own_package_is_not_an_edge(tree):
-    """``from . import thing`` in pkg/__init__.py resolves to pkg, which is not a cycle."""
+def test_a_package_importing_an_unseen_submodule_of_itself_is_not_a_self_loop(tree):
+    """``from . import thing`` in pkg/__init__.py names the submodule pkg.thing, which the
+    tree does not have: an edge to a leaf, and in particular not an edge from pkg to pkg."""
     d = tree({"pkg/__init__.py": "from . import thing"})
-    assert edges(build_graph(d)) == set()
+    assert edges(build_graph(d)) == {("pkg", "pkg.thing")}
 
 
 def test_exclude_drops_modules_and_prunes_subpackages(tree):
@@ -267,8 +423,8 @@ def test_the_graph_is_reproducible(tree):
     assert build_graph(d) == build_graph(d)
 
 
-def test_module_resolution_is_not_cached_across_calls(tree):
-    d = tree({"pkg/__init__.py": "", "pkg/m.py": "from . import thing"})
+def test_a_submodule_wins_over_an_attribute_of_the_same_name(tree):
+    d = tree({"pkg/__init__.py": "thing = 1", "pkg/m.py": "from . import thing"})
     assert edges(build_graph(d)) == {("pkg.m", "pkg")}
     pathlib.Path(d, "thing.py").write_text("")
     assert edges(build_graph(d)) == {("pkg.m", "pkg.thing")}
@@ -338,3 +494,13 @@ def test_a_very_long_expression_does_not_overflow_the_stack(tree):
     source = "x = " + " + ".join(["1"] * 3000) + "\nimport pkg.b\n"
     d = tree({"pkg/__init__.py": "", "pkg/m.py": source})
     assert edges(build_graph(d)) == {("pkg.m", "pkg.b")}
+
+
+def test_module_file_names_need_not_be_identifiers(tree):
+    """Django migrations are called 0001_initial.py and import like any other module."""
+    d = tree(
+        {"pkg/__init__.py": "", "pkg/db.py": "", "pkg/0001_initial.py": "import pkg.db"}
+    )
+    graph = build_graph(d)
+    assert graph.nodes == ["pkg", "pkg.0001_initial", "pkg.db"]
+    assert edges(graph) == {("pkg.0001_initial", "pkg.db")}
